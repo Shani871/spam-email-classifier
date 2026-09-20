@@ -393,14 +393,16 @@ with tab_gmail:
         only_unread = st.checkbox("Only unread emails", value=False)
 
     if st.button("🚀 Connect & Scan Inbox", type="primary"):
-        if not gmail_user or not gmail_pwd:
+        clean_usr = str(gmail_user or "").strip().replace('\xa0', '')
+        clean_pwd = re.sub(r'[^a-zA-Z0-9]', '', str(gmail_pwd or '')).strip()
+        if not clean_usr or not clean_pwd:
             st.error("Please enter both your Gmail address and your 16-character App Password.")
         else:
             with st.spinner(f"Connecting to imap.gmail.com and fetching latest {gmail_count} emails..."):
                 try:
                     scanned_emails = scan_gmail_inbox(
-                        email_address=gmail_user,
-                        app_password=gmail_pwd,
+                        email_address=clean_usr,
+                        app_password=clean_pwd,
                         folder=gmail_folder,
                         max_emails=gmail_count,
                         only_unread=only_unread,

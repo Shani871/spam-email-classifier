@@ -17,17 +17,20 @@ def decode_str(header_val: Any) -> str:
     """Safely decodes email header string values."""
     if not header_val:
         return ""
-    decoded_parts = decode_header(header_val)
-    result = []
-    for part, encoding in decoded_parts:
-        if isinstance(part, bytes):
-            try:
-                result.append(part.decode(encoding or "utf-8", errors="ignore"))
-            except Exception:
-                result.append(part.decode("latin1", errors="ignore"))
-        else:
-            result.append(str(part))
-    return " ".join(result)
+    try:
+        decoded_parts = decode_header(header_val)
+        result = []
+        for part, encoding in decoded_parts:
+            if isinstance(part, bytes):
+                try:
+                    result.append(part.decode(encoding or "utf-8", errors="replace"))
+                except Exception:
+                    result.append(part.decode("latin1", errors="replace"))
+            else:
+                result.append(str(part))
+        return " ".join(result).replace('\xa0', ' ').strip()
+    except Exception:
+        return str(header_val).replace('\xa0', ' ').strip()
 
 
 def extract_body(msg) -> str:
@@ -58,6 +61,7 @@ def extract_body(msg) -> str:
             else:
                 body = payload.decode("utf-8", errors="ignore")
 
+    body = body.replace('\xa0', ' ')
     return re.sub(r'\s+', ' ', body).strip()
 
 
@@ -75,8 +79,13 @@ def scan_gmail_inbox(
 
     Returns a list of classified email dictionaries.
     """
-    clean_email = email_address.strip()
-    clean_password = app_password.replace(" ", "").strip()
+    # Remove all unicode/non-breaking spaces (\xa0), tabs, and non-alphanumeric chars from password
+    clean_password = re.sub(r'[^a-zA-Z0-9]', '', str(app_password or '')).strip()
+    clean_password = clean_password.encode('ascii', errors='ignore').decode('ascii')
+
+    # Clean email address
+    clean_email = re.sub(r'\s+', '', str(email_address or '')).replace('\xa0', '').strip()
+    clean_email = clean_email.encode('ascii', errors='ignore').decode('ascii')
 
     if not clean_email or not clean_password:
         raise ValueError("Both email address and 16-character App Password are required.")
