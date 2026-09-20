@@ -35,35 +35,94 @@ if PROJECT_ROOT not in sys.path:
 
 from src.preprocessing import clean_text
 
-DATASET_PATH = os.path.join(PROJECT_ROOT, "dataset", "spam.csv")
+DATASET_DIR = os.path.join(PROJECT_ROOT, "dataset")
+DATASET_PATH = os.path.join(DATASET_DIR, "spam.csv")
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 
 
-def load_and_preprocess_data(dataset_path: str = DATASET_PATH):
+def load_and_preprocess_data():
     """
-    Loads dataset and cleans text fields.
+    Discovers, loads, and combines all available datasets in the dataset/ directory:
+    - spam.csv (standard SMS/email labeled benchmark)
+    - emails.csv (Kaggle raw email dataset with 'text' and 'spam' columns)
+    - emails-2.csv (Kaggle email word-count frequency matrix)
     """
-    if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"Dataset file not found at {dataset_path}. Run scripts/prepare_dataset.py first.")
+    dfs = []
 
-    df = pd.read_csv(dataset_path)
-    # Ensure columns are normalized
-    df.columns = [c.strip().lower() for c in df.columns]
-    if "label" not in df.columns or "text" not in df.columns:
-        raise ValueError(f"Dataset must contain 'label' and 'text' columns. Found: {df.columns.tolist()}")
+    # 1. Base dataset/spam.csv
+    spam_path = os.path.join(DATASET_DIR, "spam.csv")
+    if os.path.exists(spam_path):
+        try:
+            df_s = pd.read_csv(spam_path)
+            df_s.columns = [c.strip().lower() for c in df_s.columns]
+            if "label" in df_s.columns and "text" in df_s.columns:
+                df_s = df_s.dropna(subset=['text', 'label'])
+                df_s['label'] = df_s['label'].astype(str).str.lower().str.strip()
+                df_s = df_s[df_s['label'].isin(['ham', 'spam'])]
+                dfs.append(df_s[['label', 'text']])
+                print(f"Loaded {len(df_s)} rows from spam.csv")
+        except Exception as e:
+            print(f"Warning: Failed to load spam.csv: {e}")
 
-    df = df.dropna(subset=['text', 'label']).copy()
-    df['label'] = df['label'].astype(str).str.lower().str.strip()
-    df = df[df['label'].isin(['ham', 'spam'])].copy()
+    # 2. dataset/emails.csv (raw emails)
+    emails_path = os.path.join(DATASET_DIR, "emails.csv")
+    if os.path.exists(emails_path):
+        try:
+            df_e = pd.read_csv(emails_path)
+            df_e.columns = [c.strip().lower() for c in df_e.columns]
+            if "text" in df_e.columns:
+                label_col = "spam" if "spam" in df_e.columns else ("label" if "label" in df_e.columns else None)
+                if label_col:
+                    df_e['label'] = df_e[label_col].map({1: 'spam', 0: 'ham', '1': 'spam', '0': 'ham', 'spam': 'spam', 'ham': 'ham'})
+                    df_e = df_e.dropna(subset=['text', 'label'])
+                    dfs.append(df_e[['label', 'text']])
+                    print(f"Loaded {len(df_e)} rows from emails.csv")
+        except Exception as e:
+            print(f"Warning: Failed to load emails.csv: {e}")
+
+    # 3. dataset/emails-2.csv (word-count matrix)
+    emails2_path = os.path.join(DATASET_DIR, "emails-2.csv")
+    if os.path.exists(emails2_path):
+        try:
+            df_2 = pd.read_csv(emails2_path)
+            if "Prediction" in df_2.columns:
+                word_cols = [c for c in df_2.columns if c not in ['Email No.', 'Prediction', 'email no.']]
+                vals = df_2[word_cols].values
+                cols = list(word_cols)
+                texts = []
+                for row in vals:
+                    words = []
+                    for idx in row.nonzero()[0]:
+                        words.extend([cols[idx]] * int(row[idx]))
+                    texts.append(' '.join(words))
+                df_rec = pd.DataFrame({
+                    'text': texts,
+                    'label': df_2['Prediction'].map({0: 'ham', 1: 'spam', '0': 'ham', '1': 'spam'})
+                }).dropna(subset=['text', 'label'])
+                dfs.append(df_rec[['label', 'text']])
+                print(f"Loaded and reconstructed {len(df_rec)} rows from emails-2.csv")
+        except Exception as e:
+            print(f"Warning: Failed to load emails-2.csv: {e}")
+
+    if not dfs:
+        raise FileNotFoundError(f"No valid dataset found in {DATASET_DIR}.")
+
+    df_combined = pd.concat(dfs, ignore_index=True)
+    df_combined = df_combined.dropna(subset=['text', 'label']).drop_duplicates(subset=['text']).reset_index(drop=True)
+    print(f"Combined unique dataset size: {len(df_combined)} samples")
+
+    # Update spam.csv with consolidated data
+    df_combined[['label', 'text']].to_csv(DATASET_PATH, index=False)
+    print(f"Consolidated dataset saved to: {DATASET_PATH}")
 
     # Preprocess text
-    df['cleaned_text'] = df['text'].apply(clean_text)
+    df_combined['cleaned_text'] = df_combined['text'].apply(clean_text)
     # Filter out empty texts after cleaning
-    df = df[df['cleaned_text'].str.strip() != ""].reset_index(drop=True)
+    df_combined = df_combined[df_combined['cleaned_text'].str.strip() != ""].reset_index(drop=True)
 
     # Encode label: ham -> 0, spam -> 1
-    df['label_binary'] = df['label'].map({'ham': 0, 'spam': 1})
-    return df
+    df_combined['label_binary'] = df_combined['label'].map({'ham': 0, 'spam': 1})
+    return df_combined
 
 
 def extract_top_features(vectorizer, classifier, n_features: int = 20):

@@ -1,420 +1,420 @@
 {
-  "dataset_size": 5175,
-  "train_samples": 4140,
-  "test_samples": 1035,
-  "ham_count": 4520,
-  "spam_count": 655,
+  "dataset_size": 15501,
+  "train_samples": 12400,
+  "test_samples": 3101,
+  "ham_count": 12017,
+  "spam_count": 3484,
   "models": {
     "naive_bayes": {
       "display_name": "Multinomial Naive Bayes",
-      "accuracy": 0.9874,
-      "precision_spam": 0.9758,
-      "recall_spam": 0.9237,
-      "f1_spam": 0.949,
-      "roc_auc": 0.9954,
+      "accuracy": 0.9484,
+      "precision_spam": 0.8683,
+      "recall_spam": 0.9082,
+      "f1_spam": 0.8878,
+      "roc_auc": 0.982,
       "confusion_matrix": {
-        "true_negative": 901,
-        "false_positive": 3,
-        "false_negative": 10,
-        "true_positive": 121
+        "true_negative": 2308,
+        "false_positive": 96,
+        "false_negative": 64,
+        "true_positive": 633
       },
       "classification_report": {
         "ham": {
-          "precision": 0.9890230515916575,
-          "recall": 0.9966814159292036,
-          "f1-score": 0.9928374655647383,
-          "support": 904.0
+          "precision": 0.9730185497470489,
+          "recall": 0.9600665557404326,
+          "f1-score": 0.966499162479062,
+          "support": 2404.0
         },
         "spam": {
-          "precision": 0.9758064516129032,
-          "recall": 0.9236641221374046,
-          "f1-score": 0.9490196078431372,
-          "support": 131.0
+          "precision": 0.8683127572016461,
+          "recall": 0.9081779053084649,
+          "f1-score": 0.8877980364656382,
+          "support": 697.0
         },
-        "accuracy": 0.9874396135265701,
+        "accuracy": 0.9484037407287972,
         "macro avg": {
-          "precision": 0.9824147516022803,
-          "recall": 0.9601727690333041,
-          "f1-score": 0.9709285367039378,
-          "support": 1035.0
+          "precision": 0.9206656534743476,
+          "recall": 0.9341222305244488,
+          "f1-score": 0.9271485994723501,
+          "support": 3101.0
         },
         "weighted avg": {
-          "precision": 0.9873502258938635,
-          "recall": 0.9874396135265701,
-          "f1-score": 0.9872914371961105,
-          "support": 1035.0
+          "precision": 0.949484226172671,
+          "recall": 0.9484037407287972,
+          "f1-score": 0.9488098090990695,
+          "support": 3101.0
         }
       },
       "top_features": {
         "spam_keywords": [
           {
-            "word": "claim",
-            "score": 5.9654
-          },
-          {
-            "word": "prize",
-            "score": 5.7961
-          },
-          {
-            "word": "number now",
-            "score": 5.7106
+            "word": "viagra",
+            "score": 6.665
           },
           {
             "word": "150p",
-            "score": 5.4936
+            "score": 6.3686
           },
           {
-            "word": "number cash",
-            "score": 5.3123
+            "word": "andmanyother",
+            "score": 6.2612
           },
           {
-            "word": "number prize",
-            "score": 5.2982
+            "word": "stationery",
+            "score": 6.064
           },
           {
-            "word": "guaranteed",
-            "score": 5.2497
+            "word": "oniine",
+            "score": 5.9007
           },
           {
-            "word": "number claim",
-            "score": 5.1814
+            "word": "php",
+            "score": 5.7568
           },
           {
-            "word": "tone",
-            "score": 5.1585
+            "word": "mx number",
+            "score": 5.666
           },
           {
-            "word": "ringtone",
-            "score": 5.0848
+            "word": "submit website",
+            "score": 5.5399
           },
           {
-            "word": "cs",
-            "score": 5.0794
+            "word": "projecthoneypot",
+            "score": 5.4036
           },
           {
-            "word": "won currency",
-            "score": 5.0655
+            "word": "paliourg",
+            "score": 5.3264
+          },
+          {
+            "word": "pills",
+            "score": 5.318
+          },
+          {
+            "word": "spam",
+            "score": 5.2295
+          },
+          {
+            "word": "de meds",
+            "score": 5.2257
+          },
+          {
+            "word": "ic prescription",
+            "score": 5.214
+          },
+          {
+            "word": "professionai",
+            "score": 5.1866
+          },
+          {
+            "word": "wiil",
+            "score": 5.1852
           },
           {
             "word": "urladdr",
-            "score": 5.0625
+            "score": 5.1447
           },
           {
-            "word": "tones",
-            "score": 5.0168
+            "word": "pro number",
+            "score": 5.1182
           },
           {
-            "word": "landline",
-            "score": 4.9233
+            "word": "cs currency",
+            "score": 5.0818
           },
           {
-            "word": "stop number",
-            "score": 4.9158
-          },
-          {
-            "word": "150ppm",
-            "score": 4.9054
-          },
-          {
-            "word": "awarded",
-            "score": 4.8819
-          },
-          {
-            "word": "win currency",
-            "score": 4.7719
-          },
-          {
-            "word": "weekly",
-            "score": 4.7663
+            "word": "search engines",
+            "score": 5.0473
           }
         ],
         "ham_keywords": [
           {
+            "word": "enron",
+            "score": 6.7305
+          },
+          {
+            "word": "vince",
+            "score": 6.2144
+          },
+          {
+            "word": "kaminski",
+            "score": 6.1755
+          },
+          {
+            "word": "hou ect",
+            "score": 6.0685
+          },
+          {
+            "word": "vince kaminski",
+            "score": 6.0648
+          },
+          {
+            "word": "enron enron",
+            "score": 5.7793
+          },
+          {
+            "word": "enron com",
+            "score": 5.6793
+          },
+          {
+            "word": "cc subject",
+            "score": 5.6789
+          },
+          {
             "word": "gt",
-            "score": 4.8186
-          },
-          {
-            "word": "lt",
-            "score": 4.8165
-          },
-          {
-            "word": "lt gt",
-            "score": 4.7229
+            "score": 5.636
           },
           {
             "word": "lor",
-            "score": 4.5573
+            "score": 5.5419
           },
           {
-            "word": "da",
-            "score": 4.5427
+            "word": "kaminski hou",
+            "score": 5.54
           },
           {
-            "word": "later",
-            "score": 4.2
+            "word": "lt gt",
+            "score": 5.4985
+          },
+          {
+            "word": "ect cc",
+            "score": 5.4872
+          },
+          {
+            "word": "ect number",
+            "score": 5.2781
+          },
+          {
+            "word": "hpl hpl",
+            "score": 5.2447
+          },
+          {
+            "word": "stinson",
+            "score": 5.2132
           },
           {
             "word": "wat",
-            "score": 4.1362
+            "score": 5.1786
           },
           {
-            "word": "lol",
-            "score": 4.1048
+            "word": "crenshaw",
+            "score": 5.1344
           },
           {
-            "word": "anything",
-            "score": 4.0032
+            "word": "daren",
+            "score": 5.0987
           },
           {
-            "word": "something",
-            "score": 3.9576
-          },
-          {
-            "word": "really",
-            "score": 3.9483
-          },
-          {
-            "word": "ask",
-            "score": 3.9222
-          },
-          {
-            "word": "said",
-            "score": 3.7932
-          },
-          {
-            "word": "gonna",
-            "score": 3.7807
-          },
-          {
-            "word": "fine",
-            "score": 3.7761
-          },
-          {
-            "word": "sure",
-            "score": 3.7685
-          },
-          {
-            "word": "coming",
-            "score": 3.7457
-          },
-          {
-            "word": "morning",
-            "score": 3.7292
-          },
-          {
-            "word": "thing",
-            "score": 3.7144
-          },
-          {
-            "word": "yup",
-            "score": 3.6966
+            "word": "shirley crenshaw",
+            "score": 5.0911
           }
         ]
       }
     },
     "svm": {
       "display_name": "Support Vector Machine (Linear)",
-      "accuracy": 0.9855,
-      "precision_spam": 0.9462,
-      "recall_spam": 0.9389,
-      "f1_spam": 0.9425,
-      "roc_auc": 0.9973,
+      "accuracy": 0.9781,
+      "precision_spam": 0.9499,
+      "recall_spam": 0.9527,
+      "f1_spam": 0.9513,
+      "roc_auc": 0.9965,
       "confusion_matrix": {
-        "true_negative": 897,
-        "false_positive": 7,
-        "false_negative": 8,
-        "true_positive": 123
+        "true_negative": 2369,
+        "false_positive": 35,
+        "false_negative": 33,
+        "true_positive": 664
       },
       "classification_report": {
         "ham": {
-          "precision": 0.9911602209944751,
-          "recall": 0.9922566371681416,
-          "f1-score": 0.9917081260364843,
-          "support": 904.0
+          "precision": 0.9862614487926727,
+          "recall": 0.9854409317803661,
+          "f1-score": 0.9858510195588848,
+          "support": 2404.0
         },
         "spam": {
-          "precision": 0.9461538461538461,
-          "recall": 0.9389312977099237,
-          "f1-score": 0.9425287356321839,
-          "support": 131.0
+          "precision": 0.949928469241774,
+          "recall": 0.9526542324246772,
+          "f1-score": 0.9512893982808023,
+          "support": 697.0
         },
-        "accuracy": 0.9855072463768116,
+        "accuracy": 0.9780715898097387,
         "macro avg": {
-          "precision": 0.9686570335741607,
-          "recall": 0.9655939674390326,
-          "f1-score": 0.9671184308343341,
-          "support": 1035.0
+          "precision": 0.9680949590172234,
+          "recall": 0.9690475821025216,
+          "f1-score": 0.9685702089198436,
+          "support": 3101.0
         },
         "weighted avg": {
-          "precision": 0.9854637619566756,
-          "recall": 0.9855072463768116,
-          "f1-score": 0.985483488217196,
-          "support": 1035.0
+          "precision": 0.9780950228826514,
+          "recall": 0.9780715898097387,
+          "f1-score": 0.9780827351245657,
+          "support": 3101.0
         }
       },
       "top_features": {
         "spam_keywords": [
           {
+            "word": "subject",
+            "score": 3.4689
+          },
+          {
+            "word": "ct",
+            "score": 2.6359
+          },
+          {
             "word": "urladdr",
-            "score": 2.6901
+            "score": 2.3741
+          },
+          {
+            "word": "http",
+            "score": 2.1974
           },
           {
             "word": "call number",
-            "score": 2.4017
+            "score": 1.9939
           },
           {
-            "word": "number",
-            "score": 2.0404
+            "word": "dating",
+            "score": 1.9407
           },
           {
-            "word": "txt",
-            "score": 1.8321
+            "word": "reply",
+            "score": 1.9049
           },
           {
-            "word": "text",
-            "score": 1.7695
-          },
-          {
-            "word": "currency",
-            "score": 1.5993
-          },
-          {
-            "word": "user",
-            "score": 1.5545
-          },
-          {
-            "word": "mobile",
-            "score": 1.5544
-          },
-          {
-            "word": "free",
-            "score": 1.4634
-          },
-          {
-            "word": "service",
-            "score": 1.3858
-          },
-          {
-            "word": "ringtone",
-            "score": 1.3703
-          },
-          {
-            "word": "girls waiting",
-            "score": 1.3596
-          },
-          {
-            "word": "condition",
-            "score": 1.3267
+            "word": "ect",
+            "score": 1.78
           },
           {
             "word": "150p",
-            "score": 1.2865
+            "score": 1.7566
           },
           {
-            "word": "uk",
-            "score": 1.282
+            "word": "software",
+            "score": 1.7415
           },
           {
-            "word": "sale",
-            "score": 1.2594
+            "word": "sex",
+            "score": 1.7384
           },
           {
-            "word": "ltd",
-            "score": 1.226
+            "word": "alert",
+            "score": 1.6897
           },
           {
-            "word": "tones",
-            "score": 1.2123
+            "word": "click",
+            "score": 1.649
           },
           {
-            "word": "currency number",
-            "score": 1.2005
+            "word": "penis",
+            "score": 1.5171
           },
           {
-            "word": "brought",
-            "score": 1.1216
+            "word": "child",
+            "score": 1.5035
+          },
+          {
+            "word": "number",
+            "score": 1.4975
+          },
+          {
+            "word": "viagra",
+            "score": 1.4636
+          },
+          {
+            "word": "currency",
+            "score": 1.4047
+          },
+          {
+            "word": "games",
+            "score": 1.3659
+          },
+          {
+            "word": "medication",
+            "score": 1.3503
           }
         ],
         "ham_keywords": [
           {
-            "word": "ok",
-            "score": 0.9727
+            "word": "enron",
+            "score": 3.2577
           },
           {
-            "word": "vivek",
-            "score": 0.7856
+            "word": "vince",
+            "score": 1.9009
           },
           {
-            "word": "bad",
-            "score": 0.7029
+            "word": "th th",
+            "score": 1.6628
           },
           {
-            "word": "yup",
-            "score": 0.6951
+            "word": "click click",
+            "score": 1.419
           },
           {
-            "word": "sir",
-            "score": 0.6732
+            "word": "ect ect",
+            "score": 1.3728
           },
           {
-            "word": "got",
-            "score": 0.6665
+            "word": "pdf",
+            "score": 1.3476
           },
           {
-            "word": "can",
-            "score": 0.65
+            "word": "enron enron",
+            "score": 1.186
           },
           {
-            "word": "ard",
-            "score": 0.6354
+            "word": "picture",
+            "score": 1.1482
           },
           {
-            "word": "hey",
-            "score": 0.5999
+            "word": "told",
+            "score": 1.1367
           },
           {
-            "word": "home",
-            "score": 0.5888
+            "word": "ct ct",
+            "score": 1.1082
           },
           {
-            "word": "bedrm",
-            "score": 0.5569
+            "word": "texas",
+            "score": 1.1054
           },
           {
-            "word": "bedrm currency",
-            "score": 0.5569
+            "word": "houston",
+            "score": 1.1027
           },
           {
-            "word": "mail",
-            "score": 0.5528
+            "word": "aren",
+            "score": 1.0842
           },
           {
-            "word": "way",
-            "score": 0.5489
+            "word": "energy",
+            "score": 1.0785
           },
           {
-            "word": "work",
-            "score": 0.5441
+            "word": "type",
+            "score": 1.0662
           },
           {
-            "word": "gonna",
-            "score": 0.541
+            "word": "research",
+            "score": 1.0264
           },
           {
-            "word": "text re",
-            "score": 0.5125
+            "word": "pjm",
+            "score": 1.0183
           },
           {
-            "word": "sake",
-            "score": 0.5115
+            "word": "mail mail",
+            "score": 1.012
           },
           {
-            "word": "thats",
-            "score": 0.5071
+            "word": "daren",
+            "score": 1.0089
           },
           {
-            "word": "lt",
-            "score": 0.5059
+            "word": "mailto",
+            "score": 1.0076
           }
         ]
       }
