@@ -1,5 +1,8 @@
 # 🛡️ Spam Email Classifier — Machine Learning & NLP System
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://shani-spam-classifier.streamlit.app)
+**Live Demo:** [https://shani-spam-classifier.streamlit.app](https://shani-spam-classifier.streamlit.app)
+
 A production-grade, end-to-end Machine Learning system that classifies email and SMS messages as **Spam** or **Legitimate (Ham)** based on natural language text content. Built as a complete MCA major/minor academic project with comparative algorithm evaluation (**Multinomial Naive Bayes** vs. **Support Vector Machine**) and a modern interactive **Streamlit** web application.
 
 ---
@@ -68,17 +71,17 @@ AI Project/
 
 ## 🔬 Algorithms & Comparative Evaluation
 
-The system was evaluated on a stratified **80% train / 20% test** split ($1,035$ test instances: $904$ Ham, $131$ Spam):
+The system was evaluated on a stratified **80% train / 20% test** split across **15,501 unique emails** ($12,400$ training samples, $3,101$ test samples: $2,404$ Ham, $697$ Spam):
 
-| Metric | Multinomial Naive Bayes | Support Vector Machine (Linear) | Optimal Application |
+| Metric | Multinomial Naive Bayes | Support Vector Machine (Linear SVM) ⭐ | Optimal Application |
 |---|---|---|---|
-| **Accuracy** | **98.74%** | **98.55%** | Overall correctness |
-| **Precision (Spam)** | **97.58%** | **94.62%** | Minimizing False Positives |
-| **Recall (Spam)** | **92.37%** | **93.89%** | Catching elusive spam |
-| **F1-Score (Spam)** | **94.90%** | **94.25%** | Harmonic mean balance |
-| **ROC-AUC** | **0.9954** | **0.9973** | Discriminative power |
-| **False Positives (FP)** | **3** (out of 904 legitimate emails) | **7** | **Lower is better** |
-| **False Negatives (FN)** | **10** (out of 131 spam emails) | **8** | Missed spam emails |
+| **Accuracy** | **94.84%** | **97.81%** | Overall correctness |
+| **Precision (Spam)** | **86.83%** | **94.99%** | Minimizing False Positives |
+| **Recall (Spam)** | **90.82%** | **95.27%** | Catching elusive spam |
+| **F1-Score (Spam)** | **88.78%** | **95.13%** | Harmonic mean balance |
+| **ROC-AUC** | **0.9820** | **0.9965** | Discriminative power |
+| **False Positives (FP)** | 96 | **35** (out of 2,404 legitimate emails) | **Lower is better** |
+| **False Negatives (FN)** | 64 | **33** (out of 697 spam emails) | Missed spam emails |
 
 ### Why False Positives Matter Most in Spam Filtering
 In real-world email filtering, **a False Positive is significantly worse than a False Negative**:
