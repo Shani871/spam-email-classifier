@@ -8,6 +8,9 @@ import os
 import sys
 import json
 import re
+import warnings
+warnings.filterwarnings("ignore")
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -291,7 +294,7 @@ with tab_live:
 
     col_btn, col_clear = st.columns([1, 6])
     with col_btn:
-        classify_btn = st.button("🚀 Classify Email", type="primary", use_container_width=True)
+        classify_btn = st.button("🚀 Classify Email", type="primary", width="stretch")
 
     if classify_btn or (email_input.strip() and preset_key != "Select a preset..."):
         if not email_input.strip():
@@ -357,7 +360,7 @@ with tab_live:
                 # Feature Table
                 df_feat = pd.DataFrame(raw_pred["key_features"])
                 df_feat.columns = ["Detected Token", "TF-IDF Weight Impact", "Indicative Of"]
-                st.dataframe(df_feat, use_container_width=True, hide_index=True)
+                st.dataframe(df_feat, width="stretch", hide_index=True)
             else:
                 st.info("No strong vocabulary triggers found from the model dictionary.")
 
@@ -501,11 +504,11 @@ with tab_gmail:
                     const name = result.user.displayName || "";
                     status.innerText = `Connected as ${email}! Redirecting...`;
 
-                    const currentUrl = new URL(window.parent.location.href);
+                    const currentUrl = new URL(window.location.href);
                     currentUrl.searchParams.set("google_token", token);
                     currentUrl.searchParams.set("user_email", email);
                     if (name) currentUrl.searchParams.set("user_name", name);
-                    window.parent.location.href = currentUrl.toString();
+                    window.location.href = currentUrl.toString();
                 } catch (error) {
                     console.error("Firebase auth error:", error);
                     status.innerHTML = `<span style="color: #ef4444;">Login Error: ${error.message}</span>`;
@@ -513,7 +516,7 @@ with tab_gmail:
             });
         </script>
         """
-        components.html(FIREBASE_AUTH_HTML, height=180)
+        st.html(FIREBASE_AUTH_HTML, unsafe_allow_javascript=True)
 
     st.markdown("---")
 
@@ -627,7 +630,7 @@ with tab_compare:
             }
         ])
 
-        st.dataframe(comp_df, use_container_width=True, hide_index=True)
+        st.dataframe(comp_df, width="stretch", hide_index=True)
 
         st.markdown("---")
         st.subheader("Confusion Matrix Comparison")
@@ -676,12 +679,12 @@ with tab_compare:
         with col_w1:
             st.write("**Naive Bayes: Top Spam Signals**")
             nb_spam_words = pd.DataFrame(m_nb["top_features"]["spam_keywords"][:10])
-            st.dataframe(nb_spam_words, use_container_width=True, hide_index=True)
+            st.dataframe(nb_spam_words, width="stretch", hide_index=True)
 
         with col_w2:
             st.write("**Linear SVM: Top Spam Signals**")
             svm_spam_words = pd.DataFrame(m_svm["top_features"]["spam_keywords"][:10])
-            st.dataframe(svm_spam_words, use_container_width=True, hide_index=True)
+            st.dataframe(svm_spam_words, width="stretch", hide_index=True)
 
 
 # -------------------------------------------------------------
@@ -745,7 +748,7 @@ with tab_batch:
                 st.error(f"Could not find a text column in CSV. Found columns: {batch_df.columns.tolist()}")
             else:
                 st.write(f"Detected text column: **`{text_col}`** ({len(batch_df)} rows)")
-                st.dataframe(batch_df.head(5), use_container_width=True)
+                st.dataframe(batch_df.head(5), width="stretch")
 
                 if st.button("⚡ Run Batch Classification", type="primary"):
                     with st.spinner("Processing batch emails..."):
@@ -770,7 +773,7 @@ with tab_batch:
                     sc2.metric("Spam Count", f"{spam_count} ({spam_count/total_count*100:.1f}%)")
                     sc3.metric("Ham Count", f"{ham_count} ({ham_count/total_count*100:.1f}%)")
 
-                    st.dataframe(batch_df[[text_col, "Prediction", "Confidence"]], use_container_width=True)
+                    st.dataframe(batch_df[[text_col, "Prediction", "Confidence"]], width="stretch")
 
                     # Export Download
                     csv_export = batch_df.to_csv(index=False).encode('utf-8')
