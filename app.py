@@ -152,6 +152,12 @@ st.markdown("""
 
 @st.cache_data
 def load_metrics():
+    if not os.path.exists(METRICS_PATH):
+        try:
+            from src.train import train_models
+            train_models()
+        except Exception:
+            pass
     if os.path.exists(METRICS_PATH):
         with open(METRICS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)

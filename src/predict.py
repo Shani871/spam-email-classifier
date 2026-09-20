@@ -40,10 +40,14 @@ def load_model(model_type: str = "nb"):
     if key not in _LOADED_MODELS:
         model_path = os.path.join(MODELS_DIR, filename)
         if not os.path.exists(model_path):
-            raise FileNotFoundError(
-                f"Model file not found at {model_path}. Please train the model first by running: python src/train.py"
-            )
-        _LOADED_MODELS[key] = joblib.load(model_path)
+            from src.train import train_models
+            train_models()
+        try:
+            _LOADED_MODELS[key] = joblib.load(model_path)
+        except Exception:
+            from src.train import train_models
+            train_models()
+            _LOADED_MODELS[key] = joblib.load(model_path)
 
     return _LOADED_MODELS[key]
 
