@@ -22,6 +22,8 @@ if PROJECT_ROOT not in sys.path:
 from src.preprocessing import clean_text, inspect_preprocessing_steps
 from src.predict import predict_email, load_model, explain_prediction
 from src.gmail_scanner import scan_gmail_inbox
+from src.gmail_api import scan_gmail_with_oauth
+import streamlit.components.v1 as components
 
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 METRICS_PATH = os.path.join(MODELS_DIR, "metrics.json")
@@ -363,59 +365,54 @@ with tab_live:
 # -------------------------------------------------------------
 # TAB: Live Gmail Scanner
 # -------------------------------------------------------------
+# TAB: Live Gmail Scanner
+# -------------------------------------------------------------
 with tab_gmail:
     st.subheader("📬 Scan Your Real Gmail Inbox for Spam")
-    st.write("Securely connect to your Gmail account using a 16-character **App Password** to classify recent incoming emails in real-time.")
+    st.write("Connect your Gmail account to scan, analyze, and detect spam messages directly from your inbox.")
 
-    with st.expander("ℹ️ How to get your 16-character Google App Password (Quick 2-minute guide)", expanded=False):
-        st.markdown("""
-        1. Open your **[Google Account Security Page](https://myaccount.google.com/security)**.
-        2. Ensure **2-Step Verification** is turned **ON**.
-        3. Go to **[App Passwords](https://myaccount.google.com/apppasswords)**.
-        4. Enter an app name (e.g., `SpamClassifier`) and click **Create**.
-        5. Copy the generated **16-character code** (e.g., `abcd efgh ijkl mnop`).
-        6. Paste your Gmail address and the 16-character password below.
-        
-        *🔒 Privacy Note: Your password is used only in memory for this active session to connect via SSL to `imap.gmail.com:993` and is never saved or stored on disk.*
-        """)
+    # Check for Firebase OAuth token passed in query parameters
+    if "google_token" in st.query_params:
+        st.session_state["google_token"] = st.query_params.get("google_token")
+        st.session_state["user_email"] = st.query_params.get("user_email", "")
+        st.session_state["user_name"] = st.query_params.get("user_name", "")
+        st.query_params.clear()
 
-    col_g1, col_g2 = st.columns(2)
-    with col_g1:
-        gmail_user = st.text_input("Gmail Address:", placeholder="yourname@gmail.com", key="gmail_user")
-    with col_g2:
-        gmail_pwd = st.text_input("16-character App Password:", type="password", placeholder="abcd efgh ijkl mnop", key="gmail_pwd")
+    # SECTION 1: 1-Click Sign in with Google (Firebase)
+    st.markdown("### 🔴 Method 1: 1-Click Google Sign-In (Recommended for Non-Coders)")
 
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
-    with col_f1:
-        gmail_folder = st.selectbox("Gmail Folder:", ["INBOX", "[Gmail]/Spam", "[Gmail]/All Mail"], index=0)
-    with col_f2:
-        gmail_count = st.slider("Number of emails to fetch:", min_value=5, max_value=25, value=10, step=5)
-    with col_f3:
-        only_unread = st.checkbox("Only unread emails", value=False)
+    google_token = st.session_state.get("google_token")
+    user_email = st.session_state.get("user_email", "")
+    user_name = st.session_state.get("user_name", "")
 
-    if st.button("🚀 Connect & Scan Inbox", type="primary"):
-        clean_usr = str(gmail_user or "").strip().replace('\xa0', '')
-        clean_pwd = re.sub(r'[^a-zA-Z0-9]', '', str(gmail_pwd or '')).strip()
-        if not clean_usr or not clean_pwd:
-            st.error("Please enter both your Gmail address and your 16-character App Password.")
-        else:
-            with st.spinner(f"Connecting to imap.gmail.com and fetching latest {gmail_count} emails..."):
+    if google_token:
+        st.success(f"✅ Signed in as **{user_name}** ({user_email})")
+        col_oauth1, col_oauth2, col_oauth3 = st.columns([2, 2, 1])
+        with col_oauth1:
+            oauth_count = st.slider("Number of emails to scan:", min_value=5, max_value=25, value=10, step=5, key="oauth_count")
+        with col_oauth2:
+            oauth_unread = st.checkbox("Only unread emails", value=False, key="oauth_unread")
+        with col_oauth3:
+            if st.button("🚪 Sign out", key="signout_btn"):
+                st.session_state.pop("google_token", None)
+                st.session_state.pop("user_email", None)
+                st.session_state.pop("user_name", None)
+                st.rerun()
+
+        if st.button("🚀 Scan Gmail Inbox via Google Account", type="primary", key="oauth_scan_btn"):
+            with st.spinner(f"Fetching and analyzing latest {oauth_count} emails from your Gmail inbox..."):
                 try:
-                    scanned_emails = scan_gmail_inbox(
-                        email_address=clean_usr,
-                        app_password=clean_pwd,
-                        folder=gmail_folder,
-                        max_emails=gmail_count,
-                        only_unread=only_unread,
+                    scanned_emails = scan_gmail_with_oauth(
+                        access_token=google_token,
+                        max_emails=oauth_count,
+                        only_unread=oauth_unread,
                         model_type=model_code
                     )
 
                     if not scanned_emails:
-                        st.info("No emails found matching your selection criteria in this folder.")
+                        st.info("No matching emails found in your inbox.")
                     else:
-                        st.success(f"Successfully retrieved and classified {len(scanned_emails)} emails!")
-
-                        # Summary Metrics
+                        st.success(f"Successfully retrieved and classified {len(scanned_emails)} emails from Gmail!")
                         total_s = len(scanned_emails)
                         spam_s = sum(1 for e in scanned_emails if e["is_spam"])
                         ham_s = total_s - spam_s
@@ -426,7 +423,7 @@ with tab_gmail:
                         gm3.metric("Legitimate Emails ✅", ham_s, delta=f"{ham_s/total_s*100:.1f}%")
 
                         st.markdown("---")
-                        st.subheader("📋 Scanned Emails")
+                        st.subheader("📋 Scanned Gmail Messages")
 
                         for idx, item in enumerate(scanned_emails, start=1):
                             status_title = "SPAM" if item["is_spam"] else "HAM (CLEAN)"
@@ -436,7 +433,6 @@ with tab_gmail:
                                 st.write(f"**From:** `{item['sender']}`")
                                 st.write(f"**Date:** `{item['date']}`")
                                 st.write(f"**Prediction:** `{item['prediction']}` (Confidence: **{item['confidence']*100:.2f}%** | Spam Probability: **{item['prob_spam']*100:.2f}%**)")
-
                                 st.write("**Body Preview:**")
                                 st.text(item["body_preview"] if item["body_preview"] else "(Empty body)")
 
@@ -447,9 +443,150 @@ with tab_gmail:
                                         c_name = "token-spam" if feat["indicative_of"] == "Spam" else "token-ham"
                                         chips += f'<span class="token-chip {c_name}">{feat["word"]} ({feat["importance"]:+.2f})</span>'
                                     st.markdown(chips, unsafe_allow_html=True)
-
+                except PermissionError:
+                    st.error("Google session expired. Please sign in again.")
+                    st.session_state.pop("google_token", None)
+                    st.rerun()
                 except Exception as err:
-                    st.error(f"Error scanning Gmail: {err}")
+                    st.error(f"Error scanning Gmail via OAuth: {err}")
+    else:
+        # Render Firebase Auth component
+        FIREBASE_AUTH_HTML = """
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 22px; border-radius: 14px; border: 1px solid #334155; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <h4 style="color: #f8fafc; margin-top: 0; margin-bottom: 8px; font-size: 1.15rem;">Sign In with Google via Firebase</h4>
+            <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 16px;">
+                Authenticate with 1 click. Zero passwords required. Read-only access to scan your inbox for spam.
+            </p>
+            <button id="google-login-btn" style="background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; padding: 11px 22px; font-size: 15px; font-weight: 600; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); transition: all 0.2s ease;">
+                <svg width="18" height="18" viewBox="0 0 18 18">
+                    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/>
+                    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+                    <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707 0-.59.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.347 2.825.957 4.039l3.007-2.332z"/>
+                    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+                </svg>
+                Sign in with Google
+            </button>
+            <div id="auth-status" style="margin-top: 12px; font-size: 13px; color: #38bdf8; min-height: 20px;"></div>
+        </div>
+
+        <script type="module">
+            import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+            import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
+
+            const firebaseConfig = {
+              apiKey: "AIzaSyDNhwoiC3CxkdrlvgKaUoUwKZvhkq2x1i8",
+              authDomain: "spamguard-ai-21bd8.firebaseapp.com",
+              projectId: "spamguard-ai-21bd8",
+              storageBucket: "spamguard-ai-21bd8.firebasestorage.app",
+              messagingSenderId: "607207854512",
+              appId: "1:607207854512:web:31cc67ea31bd0e8af48675",
+              measurementId: "G-9DZRTJHZR2"
+            };
+
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const provider = new GoogleAuthProvider();
+            provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+
+            const btn = document.getElementById('google-login-btn');
+            const status = document.getElementById('auth-status');
+
+            btn.addEventListener('click', async () => {
+                status.innerText = "Opening Google Sign-In popup...";
+                try {
+                    const result = await signInWithPopup(auth, provider);
+                    const credential = GoogleAuthProvider.credentialFromResult(result);
+                    const token = credential.accessToken;
+                    const email = result.user.email;
+                    const name = result.user.displayName || "";
+                    status.innerText = `Connected as ${email}! Redirecting...`;
+
+                    const currentUrl = new URL(window.parent.location.href);
+                    currentUrl.searchParams.set("google_token", token);
+                    currentUrl.searchParams.set("user_email", email);
+                    if (name) currentUrl.searchParams.set("user_name", name);
+                    window.parent.location.href = currentUrl.toString();
+                } catch (error) {
+                    console.error("Firebase auth error:", error);
+                    status.innerHTML = `<span style="color: #ef4444;">Login Error: ${error.message}</span>`;
+                }
+            });
+        </script>
+        """
+        components.html(FIREBASE_AUTH_HTML, height=180)
+
+    st.markdown("---")
+
+    # SECTION 2: Manual App Password (IMAP)
+    with st.expander("🔑 Method 2: Manual App Password (IMAP fallback)"):
+        st.write("For advanced users: connect via IMAP SSL with a 16-character Google App Password.")
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            gmail_user = st.text_input("Gmail Address:", placeholder="yourname@gmail.com", key="gmail_user")
+        with col_g2:
+            gmail_pwd = st.text_input("16-character App Password:", type="password", placeholder="abcd efgh ijkl mnop", key="gmail_pwd")
+
+        col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
+        with col_f1:
+            gmail_folder = st.selectbox("Gmail Folder:", ["INBOX", "[Gmail]/Spam", "[Gmail]/All Mail"], index=0)
+        with col_f2:
+            gmail_count = st.slider("Number of emails to fetch:", min_value=5, max_value=25, value=10, step=5)
+        with col_f3:
+            only_unread = st.checkbox("Only unread emails", value=False)
+
+        if st.button("🚀 Connect via App Password", type="secondary"):
+            clean_usr = str(gmail_user or "").strip().replace('\xa0', '')
+            clean_pwd = re.sub(r'[^a-zA-Z0-9]', '', str(gmail_pwd or '')).strip()
+            if not clean_usr or not clean_pwd:
+                st.error("Please enter both your Gmail address and your 16-character App Password.")
+            else:
+                with st.spinner(f"Connecting to imap.gmail.com and fetching latest {gmail_count} emails..."):
+                    try:
+                        scanned_emails = scan_gmail_inbox(
+                            email_address=clean_usr,
+                            app_password=clean_pwd,
+                            folder=gmail_folder,
+                            max_emails=gmail_count,
+                            only_unread=only_unread,
+                            model_type=model_code
+                        )
+
+                        if not scanned_emails:
+                            st.info("No emails found matching your selection criteria in this folder.")
+                        else:
+                            st.success(f"Successfully retrieved and classified {len(scanned_emails)} emails!")
+                            total_s = len(scanned_emails)
+                            spam_s = sum(1 for e in scanned_emails if e["is_spam"])
+                            ham_s = total_s - spam_s
+
+                            gm1, gm2, gm3 = st.columns(3)
+                            gm1.metric("Total Emails Scanned", total_s)
+                            gm2.metric("Spam Detected 🚨", spam_s, delta=f"{spam_s/total_s*100:.1f}%" if spam_s > 0 else "0%", delta_color="inverse")
+                            gm3.metric("Legitimate Emails ✅", ham_s, delta=f"{ham_s/total_s*100:.1f}%")
+
+                            st.markdown("---")
+                            st.subheader("📋 Scanned Emails")
+
+                            for idx, item in enumerate(scanned_emails, start=1):
+                                status_title = "SPAM" if item["is_spam"] else "HAM (CLEAN)"
+                                icon = "🚨" if item["is_spam"] else "✅"
+
+                                with st.expander(f"{icon} #{idx} | [{status_title}] {item['subject']} — {item['sender']}", expanded=item["is_spam"]):
+                                    st.write(f"**From:** `{item['sender']}`")
+                                    st.write(f"**Date:** `{item['date']}`")
+                                    st.write(f"**Prediction:** `{item['prediction']}` (Confidence: **{item['confidence']*100:.2f}%** | Spam Probability: **{item['prob_spam']*100:.2f}%**)")
+                                    st.write("**Body Preview:**")
+                                    st.text(item["body_preview"] if item["body_preview"] else "(Empty body)")
+
+                                    if item["key_features"]:
+                                        st.write("**Trigger Vocabulary Identified:**")
+                                        chips = ""
+                                        for feat in item["key_features"]:
+                                            c_name = "token-spam" if feat["indicative_of"] == "Spam" else "token-ham"
+                                            chips += f'<span class="token-chip {c_name}">{feat["word"]} ({feat["importance"]:+.2f})</span>'
+                                        st.markdown(chips, unsafe_allow_html=True)
+                    except Exception as err:
+                        st.error(f"Error scanning Gmail: {err}")
 
 
 # -------------------------------------------------------------
