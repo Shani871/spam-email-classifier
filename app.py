@@ -20,6 +20,7 @@ if PROJECT_ROOT not in sys.path:
 
 from src.preprocessing import clean_text, inspect_preprocessing_steps
 from src.predict import predict_email, load_model, explain_prediction
+from src.gmail_scanner import scan_gmail_inbox
 
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 METRICS_PATH = os.path.join(MODELS_DIR, "metrics.json")
@@ -257,8 +258,9 @@ with st.sidebar:
 
 
 # Tabs Layout
-tab_live, tab_compare, tab_nlp, tab_batch = st.tabs([
+tab_live, tab_gmail, tab_compare, tab_nlp, tab_batch = st.tabs([
     "✉️ Live Classifier",
+    "📬 Live Gmail Scanner",
     "📊 Model Comparison & Metrics",
     "🔍 Preprocessing Inspector",
     "📁 Batch CSV Processing"
@@ -355,6 +357,96 @@ with tab_live:
                 st.dataframe(df_feat, use_container_width=True, hide_index=True)
             else:
                 st.info("No strong vocabulary triggers found from the model dictionary.")
+
+
+# -------------------------------------------------------------
+# TAB: Live Gmail Scanner
+# -------------------------------------------------------------
+with tab_gmail:
+    st.subheader("📬 Scan Your Real Gmail Inbox for Spam")
+    st.write("Securely connect to your Gmail account using a 16-character **App Password** to classify recent incoming emails in real-time.")
+
+    with st.expander("ℹ️ How to get your 16-character Google App Password (Quick 2-minute guide)", expanded=False):
+        st.markdown("""
+        1. Open your **[Google Account Security Page](https://myaccount.google.com/security)**.
+        2. Ensure **2-Step Verification** is turned **ON**.
+        3. Go to **[App Passwords](https://myaccount.google.com/apppasswords)**.
+        4. Enter an app name (e.g., `SpamClassifier`) and click **Create**.
+        5. Copy the generated **16-character code** (e.g., `abcd efgh ijkl mnop`).
+        6. Paste your Gmail address and the 16-character password below.
+        
+        *🔒 Privacy Note: Your password is used only in memory for this active session to connect via SSL to `imap.gmail.com:993` and is never saved or stored on disk.*
+        """)
+
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        gmail_user = st.text_input("Gmail Address:", placeholder="yourname@gmail.com", key="gmail_user")
+    with col_g2:
+        gmail_pwd = st.text_input("16-character App Password:", type="password", placeholder="abcd efgh ijkl mnop", key="gmail_pwd")
+
+    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
+    with col_f1:
+        gmail_folder = st.selectbox("Gmail Folder:", ["INBOX", "[Gmail]/Spam", "[Gmail]/All Mail"], index=0)
+    with col_f2:
+        gmail_count = st.slider("Number of emails to fetch:", min_value=5, max_value=25, value=10, step=5)
+    with col_f3:
+        only_unread = st.checkbox("Only unread emails", value=False)
+
+    if st.button("🚀 Connect & Scan Inbox", type="primary"):
+        if not gmail_user or not gmail_pwd:
+            st.error("Please enter both your Gmail address and your 16-character App Password.")
+        else:
+            with st.spinner(f"Connecting to imap.gmail.com and fetching latest {gmail_count} emails..."):
+                try:
+                    scanned_emails = scan_gmail_inbox(
+                        email_address=gmail_user,
+                        app_password=gmail_pwd,
+                        folder=gmail_folder,
+                        max_emails=gmail_count,
+                        only_unread=only_unread,
+                        model_type=model_code
+                    )
+
+                    if not scanned_emails:
+                        st.info("No emails found matching your selection criteria in this folder.")
+                    else:
+                        st.success(f"Successfully retrieved and classified {len(scanned_emails)} emails!")
+
+                        # Summary Metrics
+                        total_s = len(scanned_emails)
+                        spam_s = sum(1 for e in scanned_emails if e["is_spam"])
+                        ham_s = total_s - spam_s
+
+                        gm1, gm2, gm3 = st.columns(3)
+                        gm1.metric("Total Emails Scanned", total_s)
+                        gm2.metric("Spam Detected 🚨", spam_s, delta=f"{spam_s/total_s*100:.1f}%" if spam_s > 0 else "0%", delta_color="inverse")
+                        gm3.metric("Legitimate Emails ✅", ham_s, delta=f"{ham_s/total_s*100:.1f}%")
+
+                        st.markdown("---")
+                        st.subheader("📋 Scanned Emails")
+
+                        for idx, item in enumerate(scanned_emails, start=1):
+                            status_title = "SPAM" if item["is_spam"] else "HAM (CLEAN)"
+                            icon = "🚨" if item["is_spam"] else "✅"
+
+                            with st.expander(f"{icon} #{idx} | [{status_title}] {item['subject']} — {item['sender']}", expanded=item["is_spam"]):
+                                st.write(f"**From:** `{item['sender']}`")
+                                st.write(f"**Date:** `{item['date']}`")
+                                st.write(f"**Prediction:** `{item['prediction']}` (Confidence: **{item['confidence']*100:.2f}%** | Spam Probability: **{item['prob_spam']*100:.2f}%**)")
+
+                                st.write("**Body Preview:**")
+                                st.text(item["body_preview"] if item["body_preview"] else "(Empty body)")
+
+                                if item["key_features"]:
+                                    st.write("**Trigger Vocabulary Identified:**")
+                                    chips = ""
+                                    for feat in item["key_features"]:
+                                        c_name = "token-spam" if feat["indicative_of"] == "Spam" else "token-ham"
+                                        chips += f'<span class="token-chip {c_name}">{feat["word"]} ({feat["importance"]:+.2f})</span>'
+                                    st.markdown(chips, unsafe_allow_html=True)
+
+                except Exception as err:
+                    st.error(f"Error scanning Gmail: {err}")
 
 
 # -------------------------------------------------------------
