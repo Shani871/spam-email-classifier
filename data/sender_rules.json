@@ -1,0 +1,13 @@
+{
+  "whitelist": [
+    "notifications@github.com",
+    "security@google.com",
+    "service@paypal.com",
+    "no-reply@accounts.google.com"
+  ],
+  "blacklist": [
+    "paypa1-security-update.com",
+    "chase-fraud-alert.ru",
+    "international-lottery.xyz"
+  ]
+}

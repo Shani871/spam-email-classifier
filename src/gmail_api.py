@@ -67,6 +67,11 @@ def scan_gmail_with_oauth(
     """
     if not access_token:
         raise ValueError("Valid Google OAuth access token is required.")
+    if access_token == "signed_in":
+        raise ValueError(
+            "Account is signed in for identity only without Gmail API access. "
+            "Please sign out and sign in with 'Request Gmail scan permission' checked, or connect via Method A (App Password)."
+        )
 
     headers = {"Authorization": f"Bearer {access_token}"}
     query = "is:unread" if only_unread else "in:inbox"
@@ -80,6 +85,11 @@ def scan_gmail_with_oauth(
     resp = requests.get(url_list, headers=headers, params=params, timeout=15)
     if resp.status_code == 401:
         raise PermissionError("Access token expired or invalid. Please sign in with Google again.")
+    elif resp.status_code == 403:
+        raise PermissionError(
+            "Google blocked access to Gmail (HTTP 403 Forbidden). "
+            "This account needs to be added to Google Cloud 'Test Users', or you can connect instantly via Method A (App Password)."
+        )
     elif resp.status_code != 200:
         raise RuntimeError(f"Gmail API error ({resp.status_code}): {resp.text}")
 

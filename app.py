@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Configure sys.path
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -26,7 +27,13 @@ from src.preprocessing import clean_text, inspect_preprocessing_steps
 from src.predict import predict_email, load_model, explain_prediction
 from src.gmail_scanner import scan_gmail_inbox
 from src.gmail_api import scan_gmail_with_oauth
-import streamlit.components.v1 as components
+from src.security_analyzer import inspect_email_security, extract_urls, analyze_domain
+from src.ai_threat_intelligence import compute_threat_intelligence
+from src.automation_worker import get_global_worker
+from src.active_learning import record_feedback, get_feedback_records, get_feedback_stats, retrain_model_with_feedback
+from src.attachment_analyzer import analyze_attachment_metadata, inspect_email_attachments
+from src.gmail_actions import add_to_whitelist, add_to_blacklist, remove_sender_rule, get_sender_rules, check_sender_reputation, execute_quarantine_imap
+from src.llm_threat_reasoning import explain_threat_with_llm
 
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 METRICS_PATH = os.path.join(MODELS_DIR, "metrics.json")
@@ -39,6 +46,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Top-level handler for Google OAuth redirect query parameters
+if "google_token" in st.query_params:
+    st.session_state["google_token"] = st.query_params.get("google_token")
+    st.session_state["user_email"] = st.query_params.get("user_email", "")
+    st.session_state["user_name"] = st.query_params.get("user_name", "")
+    st.session_state["just_logged_in"] = True
+    st.query_params.clear()
+
 
 # Custom Styling
 st.markdown("""
@@ -153,6 +169,48 @@ st.markdown("""
         border: 1px solid #22c55e;
         color: #86efac;
     }
+    .badge-critical {
+        background: #ef4444;
+        color: #ffffff;
+    }
+    .badge-high {
+        background: #f97316;
+        color: #ffffff;
+    }
+    .badge-suspicious {
+        background: #eab308;
+        color: #1e293b;
+    }
+    .badge-clean {
+        background: #22c55e;
+        color: #ffffff;
+    }
+    .status-critical {
+        background: linear-gradient(135deg, #450a0a 0%, #2a0808 100%);
+        border-color: #ef4444;
+        color: #fecaca;
+    }
+    .status-high {
+        background: linear-gradient(135deg, #431407 0%, #270b04 100%);
+        border-color: #f97316;
+        color: #fed7aa;
+    }
+    .soc-card {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+    .url-tag-danger {
+        background-color: rgba(239, 68, 68, 0.2);
+        border: 1px solid #ef4444;
+        color: #fca5a5;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.85rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -188,6 +246,15 @@ st.markdown("""
     <p>Production-ready Natural Language Processing pipeline comparing Multinomial Naive Bayes & Linear Support Vector Machine with TF-IDF feature extraction.</p>
 </div>
 """, unsafe_allow_html=True)
+
+if st.session_state.get("just_logged_in"):
+    u_name = st.session_state.get("user_name") or "User"
+    u_mail = st.session_state.get("user_email") or ""
+    st.success(
+        f"🎉 **Signed in with Google as {u_name} ({u_mail})!** "
+        f"Switch to the **'📬 Live Gmail Scanner'** tab to inspect and triage your inbox messages.",
+        icon="✅"
+    )
 
 # Preset Email Templates
 PRESETS = {
@@ -262,15 +329,497 @@ with st.sidebar:
         st.write(f"**Legitimate (Ham):** {(df_dataset['label'] == 'ham').sum():,}")
         st.write(f"**Spam Messages:** {(df_dataset['label'] == 'spam').sum():,}")
 
+    if st.session_state.get("google_token"):
+        st.markdown("---")
+        st.subheader("👤 Connected Google Account")
+        u_name = st.session_state.get("user_name") or "Google User"
+        u_mail = st.session_state.get("user_email") or ""
+        st.success(f"**{u_name}**\n\n`{u_mail}`")
+        if st.button("🚪 Sign out of Google", key="sidebar_signout_btn", width="stretch"):
+            st.session_state.pop("google_token", None)
+            st.session_state.pop("user_email", None)
+            st.session_state.pop("user_name", None)
+            st.session_state.pop("just_logged_in", None)
+            st.rerun()
+
 
 # Tabs Layout
-tab_live, tab_gmail, tab_compare, tab_nlp, tab_batch = st.tabs([
+tab_soc, tab_forensics, tab_learning, tab_live, tab_gmail, tab_compare, tab_nlp, tab_batch = st.tabs([
+    "🤖 Autonomous Inbox Monitor (SOC)",
+    "🛡️ AI Threat Intelligence & Forensics",
+    "🧠 Active Learning & Policy Studio",
     "✉️ Live Classifier",
     "📬 Live Gmail Scanner",
     "📊 Model Comparison & Metrics",
     "🔍 Preprocessing Inspector",
     "📁 Batch CSV Processing"
 ])
+
+# -------------------------------------------------------------
+# TAB: Autonomous Inbox Monitor (SOC)
+# -------------------------------------------------------------
+with tab_soc:
+    st.subheader("🤖 Autonomous AI Inbox Surveillance & Security Operations Center (SOC)")
+    st.write(
+        "Continuous 24/7 background email triage, heuristic threat hunting, and automated quarantine. "
+        "The autonomous daemon inspects candidate emails, evaluates multi-tier risk scores, and logs threats in real time."
+    )
+
+    worker = get_global_worker()
+    worker_stats = worker.get_stats()
+    is_active = worker.is_running()
+
+    # Control Panel Container
+    with st.container(border=True):
+        st.markdown("#### ⚙️ Autonomous Daemon Controls")
+
+        col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([2, 2, 2])
+
+        with col_ctrl1:
+            status_badge = "🟢 ACTIVE — CONTINUOUS SURVEILLANCE" if is_active else "🔴 INACTIVE — STANDBY MODE"
+            st.write(f"**Daemon Status:** `{status_badge}`")
+            if is_active:
+                if st.button("⏹️ Stop Background Monitor", type="secondary", width="stretch", key="soc_stop_btn"):
+                    worker.stop()
+                    st.rerun()
+            else:
+                if st.button("▶️ Start Background Monitor", type="primary", width="stretch", key="soc_start_btn"):
+                    worker.model_type = model_code
+                    worker.start()
+                    st.rerun()
+
+        with col_ctrl2:
+            poll_interval = st.slider(
+                "Polling Interval (seconds):",
+                min_value=5,
+                max_value=120,
+                value=worker.interval_seconds,
+                step=5,
+                key="soc_interval_slider"
+            )
+            worker.set_interval(poll_interval)
+
+        with col_ctrl3:
+            st.write("**Manual / Fast Actions:**")
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                if st.button("⚡ Scan Pass Now", width="stretch", key="soc_scan_once"):
+                    with st.spinner("Executing immediate threat evaluation pass..."):
+                        worker.model_type = model_code
+                        new_items = worker.scan_once()
+                    if new_items:
+                        st.success(f"Processed {len(new_items)} new message(s)!")
+                    else:
+                        st.info("No unread or pending emails in queue.")
+                    st.rerun()
+            with col_b2:
+                if st.button("🗑️ Clear Logs", width="stretch", key="soc_clear_logs"):
+                    worker.clear_audit_logs()
+                    st.success("Audit trail cleared.")
+                    st.rerun()
+
+        # Surveillance Data Source
+        st.markdown("---")
+        source_mode = st.radio(
+            "Surveillance Ingestion Source:",
+            options=["Simulated Threat Stream (Autonomous Sandbox)", "Live Gmail Account (IMAP / App Password)"],
+            index=0 if not (worker.email_address and worker.app_password) else 1,
+            horizontal=True,
+            key="soc_source_mode"
+        )
+
+        if "Live Gmail" in source_mode:
+            c_gm1, c_gm2 = st.columns(2)
+            with c_gm1:
+                soc_email = st.text_input("Gmail Address:", value=worker.email_address, key="soc_email_input")
+            with c_gm2:
+                soc_pwd = st.text_input("16-character App Password:", value=worker.app_password, type="password", key="soc_pwd_input")
+            if st.button("Save Credentials for Background Daemon", key="soc_save_creds"):
+                worker.configure_credentials(soc_email, soc_pwd)
+                st.success("Credentials saved to background worker!")
+        else:
+            worker.configure_credentials("", "")
+            st.caption("ℹ️ Operating in Autonomous Sandbox mode: periodically ingests simulated high-threat lures and benign emails to demonstrate real-time quarantine.")
+
+    # SOC Telemetry Metrics
+    st.markdown("#### 📊 Security Operations Center Telemetry")
+    t1, t2, t3, t4 = st.columns(4)
+    total_scanned = worker_stats["total_scanned"]
+    quarantined = worker_stats["threats_quarantined"]
+    spam_flagged = worker_stats["spam_flagged"]
+    clean_passed = worker_stats["clean_passed"]
+
+    t1.metric("Total Emails Processed", total_scanned)
+    t2.metric("Threats Quarantined 🚨", quarantined, delta=f"{quarantined/total_scanned*100:.1f}%" if total_scanned > 0 else "0%", delta_color="inverse")
+    t3.metric("Spam Blocked 🚫", spam_flagged, delta=f"{spam_flagged/total_scanned*100:.1f}%" if total_scanned > 0 else "0%", delta_color="inverse")
+    t4.metric("Legitimate Emails Passed ✅", clean_passed, delta=f"{clean_passed/total_scanned*100:.1f}%" if total_scanned > 0 else "0%")
+
+    if worker_stats["last_scan_time"]:
+        st.caption(f"🕒 Last automated sweep timestamp: **{worker_stats['last_scan_time']}**")
+
+    # Real-Time Threat Audit Trail
+    st.markdown("---")
+    st.subheader("📋 Real-Time Threat Audit Stream")
+    logs = worker.get_recent_audit_logs(limit=25)
+
+    if not logs:
+        st.info("No audit logs recorded yet. Start the background monitor or click 'Scan Pass Now' above.")
+    else:
+        for idx, entry in enumerate(logs):
+            score = entry.get("threat_score", 0)
+            level = entry.get("threat_level", "UNKNOWN")
+            action = entry.get("action", "PROCESSED")
+
+            action_icon = "🚨" if action == "QUARANTINED" else ("🚫" if action == "FLAGGED_SPAM" else "✅")
+            header_str = f"{action_icon} [{action}] {entry.get('subject', 'No Subject')} — Score: {score}/100 ({level})"
+
+            with st.expander(header_str, expanded=(idx == 0 and score >= 70)):
+                c_e1, c_e2, c_e3 = st.columns(3)
+                with c_e1:
+                    st.write(f"**From:** `{entry.get('sender', 'Unknown')}`")
+                    st.write(f"**Logged At:** `{entry.get('timestamp')}`")
+                with c_e2:
+                    st.write(f"**Attack Vector:** `{entry.get('attack_vector', 'N/A')}`")
+                    st.write(f"**Threat Level:** `{level}`")
+                with c_e3:
+                    st.write(f"**Automated Action:** `{action}`")
+                    st.progress(min(1.0, score / 100.0), text=f"Threat Score: {score}/100")
+
+                if entry.get("tactics_detected"):
+                    st.write("**Detected Threat Tactics:**")
+                    for t in entry["tactics_detected"]:
+                        st.markdown(f"- ⚠️ {t}")
+
+                if entry.get("advisories"):
+                    st.write("**Remediation Advisory:**")
+                    for adv in entry["advisories"]:
+                        st.markdown(f"- {adv}")
+
+                # Remediation Action Buttons
+                st.markdown("---")
+                col_act1, col_act2, col_act3 = st.columns(3)
+                with col_act1:
+                    if st.button("🛡️ Whitelist Sender", key=f"white_{idx}_{entry.get('id')}", width="stretch"):
+                        add_to_whitelist(entry.get("sender", ""))
+                        st.success(f"Added '{entry.get('sender')}' to whitelist!")
+                with col_act2:
+                    if st.button("🚫 Blacklist Sender", key=f"black_{idx}_{entry.get('id')}", width="stretch"):
+                        add_to_blacklist(entry.get("sender", ""))
+                        st.warning(f"Added '{entry.get('sender')}' to blacklist!")
+                with col_act3:
+                    if st.button("🗑️ Quarantine Email", key=f"quar_{idx}_{entry.get('id')}", width="stretch"):
+                        res = execute_quarantine_imap(worker.email_address, worker.app_password, str(entry.get('id')))
+                        if res["success"]:
+                            st.success(res["message"])
+                        else:
+                            st.info(res["message"])
+
+
+# -------------------------------------------------------------
+# TAB: AI Threat Intelligence & Forensics
+# -------------------------------------------------------------
+with tab_forensics:
+    st.subheader("🛡️ Deep AI Threat Intelligence & Security Forensics")
+    st.write(
+        "Inspect any email with multi-tier threat forensics: combines machine learning classification "
+        "with URL typosquatting detection, deceptive routing analysis, psychological coercion extraction, and actionable remediation advisories."
+    )
+
+    f_col_preset, _ = st.columns([2, 1])
+    with f_col_preset:
+        f_preset = st.selectbox(
+            "Load High-Threat Scenario / Phishing Sample:",
+            [
+                "Select scenario...",
+                "🚨 PayPal Account Suspension & Credential Harvesting",
+                "💳 Chase Wire Fraud & IP Redirection Lure",
+                "🎁 International Lottery & Cash Prize Bait",
+                "💼 Legitimate Corporate Strategy & Sync Notes"
+            ],
+            key="forensic_preset_select"
+        )
+
+    f_presets_map = {
+        "🚨 PayPal Account Suspension & Credential Harvesting": (
+            "Subject: URGENT: Your PayPal Account Has Been Suspended!\n\n"
+            "Dear customer, unauthorized login detected from Russia. To prevent permanent lock, "
+            "verify your bank credentials immediately: http://paypa1-security-verify-account-now.xyz\n\n"
+            "Failure to act within 24 hours will result in permanent account termination."
+        ),
+        "💳 Chase Wire Fraud & IP Redirection Lure": (
+            "Subject: Security Alert: Unauthorized wire transfer of $2,850 initiated\n\n"
+            "A wire transfer of $2,850.00 was requested from your checking account. "
+            "If you did not authorize this, click cancel immediately: http://192.168.1.105/chase/cancel\n"
+            "Otherwise funds will be wired promptly."
+        ),
+        "🎁 International Lottery & Cash Prize Bait": (
+            "Subject: Congratulations! You Have Won $5,000,000 Cash Prize!\n\n"
+            "Dear Winner, your email was randomly selected in our international lottery promotion. "
+            "Claim your $5,000,000 reward immediately by sending your full name and bank wire details to claim-bonus@reward-fund.ru."
+        ),
+        "💼 Legitimate Corporate Strategy & Sync Notes": (
+            "Subject: Team Sprint Sync Agenda - Monday 10:00 AM\n\n"
+            "Hi team, please review the sprint backlog before our sync tomorrow at 10 AM. "
+            "We will discuss pull requests, test coverage reports, and production deployment timelines. "
+            "Attached is the slide deck for discussion."
+        )
+    }
+
+    initial_f_text = f_presets_map.get(f_preset, "")
+    forensic_text_input = st.text_area(
+        "Paste email body or full message headers:",
+        value=initial_f_text,
+        height=180,
+        placeholder="Paste an email message or suspicious content with links...",
+        key="forensic_email_input"
+    )
+
+    col_att, col_key = st.columns([2, 2])
+    with col_att:
+        sim_att = st.selectbox(
+            "Simulate Attachment (Payload Testing):",
+            [
+                "None (No Attachment)",
+                "invoice_overdue.pdf.exe (Double Extension Trojan)",
+                "quarterly_bonus_schedule.xlsm (Macro-Enabled Office Document)",
+                "system_security_patch.vbs (VBScript Payload)",
+                "project_proposal.pdf (Benign Document)"
+            ],
+            key="forensic_att_select"
+        )
+    with col_key:
+        llm_api_key = st.text_input("Gemini API Key (Optional for live LLM):", type="password", key="gemini_key_forensic", help="Leave blank to use built-in offline threat reasoner.")
+
+    active_attachments = []
+    if "None" not in sim_att:
+        att_filename = sim_att.split(" ")[0]
+        active_attachments.append({"filename": att_filename, "size": 240000})
+
+    f_btn_col, _ = st.columns([1, 5])
+    with f_btn_col:
+        run_forensics = st.button("🛡️ Run Deep Threat Inspection", type="primary", width="stretch", key="run_forensics_btn")
+
+    if run_forensics or (forensic_text_input.strip() and f_preset != "Select scenario..."):
+        if not forensic_text_input.strip():
+            st.warning("Please enter email text to inspect.")
+        else:
+            with st.spinner("Executing multi-tier AI threat analysis & forensic dissection..."):
+                t_report = compute_threat_intelligence(
+                    forensic_text_input,
+                    model_type=model_code,
+                    attachments=active_attachments
+                )
+
+            t_score = t_report["threat_score"]
+            t_level = t_report["threat_level"]
+            t_vector = t_report["attack_vector"]
+            u_info = t_report["url_forensics"]
+            p_info = t_report["psychological_forensics"]
+            att_info = t_report.get("attachment_forensics", {})
+
+            # Hero Threat Card
+            card_cls = "status-critical" if t_score >= 75 else ("status-high" if t_score >= 50 else "status-ham")
+            badge_cls = "badge-critical" if t_score >= 75 else ("badge-high" if t_score >= 50 else "badge-ham")
+
+            action_desc = "🚨 Immediate quarantine and containment recommended." if t_report["is_action_required"] else "✅ Message evaluated as clean with no critical security indicators."
+
+            st.markdown(f"""
+            <div class="status-card {card_cls}">
+                <span class="badge-pill {badge_cls}">THREAT SCORE: {t_score}/100 — {t_level}</span>
+                <h2 style="margin: 10px 0 6px 0;">{t_vector}</h2>
+                <p style="margin: 0; font-size: 1.05rem;">
+                    <b>Action Required:</b> {action_desc}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Forensic Inspection Containers
+            fc1, fc2 = st.columns(2)
+
+            with fc1:
+                with st.container(border=True):
+                    st.markdown("#### 🔗 URL & Link Forensics")
+                    st.write(f"Total Extracted URLs: **{u_info['url_count']}**")
+
+                    if u_info["has_deceptive_link"]:
+                        st.error("🚨 **Deceptive Link Detected:** Anchor text displays a trusted destination while underlying URL targets another domain.")
+                    if u_info["has_suspicious_domain"]:
+                        st.warning("⚠️ **Suspicious TLD / Domain:** Destination uses a high-risk TLD or unverified infrastructure.")
+                    if u_info["has_ip_link"]:
+                        st.error("🚨 **Direct IP Link:** Embedded URL targets a raw IP address, bypassing standard DNS reputation.")
+
+                    if u_info["urls"]:
+                        for idx_u, u_data in enumerate(u_info["urls"], start=1):
+                            d_meta = u_data.get("domain_analysis", {})
+                            brand_spoof = d_meta.get("impersonated_brand")
+                            with st.container():
+                                st.markdown(f"**Link #{idx_u}:** `{u_data['url']}`")
+                                if brand_spoof:
+                                    st.markdown(f"- 🚨 **Brand Impersonation:** Mimicking official `{brand_spoof}` domain!")
+                                if u_data.get("is_deceptive"):
+                                    st.markdown(f"- ⚠️ **Deceptive Routing:** {u_data.get('deceptive_reason')}")
+                                if d_meta.get("is_suspicious_tld"):
+                                    st.markdown(f"- ⚠️ **High-Risk TLD:** `.{d_meta.get('tld')}`")
+                                st.markdown("---")
+                    else:
+                        st.info("No external links or URLs detected in the message.")
+
+            with fc2:
+                with st.container(border=True):
+                    st.markdown("#### 🧠 Psychological Coercion Tactics")
+                    st.write(f"Psychological Urgency Score: **{p_info['urgency_score'] * 100:.0f}%**")
+                    st.progress(p_info["urgency_score"])
+
+                    coercion = p_info["coercion_tactics"]
+                    if coercion:
+                        for tactic, triggers in coercion.items():
+                            tactic_name = tactic.replace("_", " ").title()
+                            st.markdown(f"**{tactic_name}:**")
+                            for trig in triggers:
+                                st.markdown(f"- 🚩 Found trigger: `\"{trig}\"`")
+                    else:
+                        st.success("No aggressive psychological manipulation or artificial urgency detected.")
+
+            # Attachment Forensics Card if attachments present
+            if att_info.get("attachment_count", 0) > 0:
+                with st.container(border=True):
+                    st.markdown("#### 📎 Attachment & Payload Forensics")
+                    st.write(f"Attachments Inspected: **{att_info['attachment_count']}** | Highest Risk: **{att_info['highest_risk_level']}**")
+                    for rep in att_info["attachment_reports"]:
+                        is_crit = rep["risk_level"] in ["CRITICAL", "HIGH"]
+                        box_fn = st.error if is_crit else st.success
+                        box_fn(f"**File:** `{rep['filename']}` — Risk: **{rep['risk_level']}**")
+                        for r in rep["risk_reasons"]:
+                            st.markdown(f"- ⚠️ {r}")
+
+            # LLM Deep Threat Reasoner
+            with st.expander("🧠 LLM Attacker Motive & Deep Threat Reasoning Breakdown", expanded=t_score >= 70):
+                with st.spinner("Synthesizing natural language threat narrative..."):
+                    llm_expl = explain_threat_with_llm(
+                        forensic_text_input,
+                        subject="Security Inspection",
+                        sender="investigated-sender@external.com",
+                        api_key=llm_api_key.strip() if llm_api_key else None
+                    )
+
+                st.caption(f"Engine: `{llm_expl.get('mode', 'OFFLINE_SEMANTIC_REASONER')}`")
+                st.markdown(f"**Executive Cyber Threat Summary:**\n{llm_expl.get('executive_summary', '')}")
+
+                st.markdown("**Psychological Attack Vector:**")
+                for p_tactic in llm_expl.get("psychological_breakdown", []):
+                    st.markdown(p_tactic)
+
+                st.markdown("**Technical Evasion Techniques:**")
+                for t_tactic in llm_expl.get("technical_breakdown", []):
+                    st.markdown(t_tactic)
+
+                st.markdown(f"**Blast Radius & Organizational Impact:**\n{llm_expl.get('blast_radius_assessment', '')}")
+
+            # Full Width Remediation Advisory Container
+            with st.container(border=True):
+                st.markdown("#### 🛡️ AI Security Remediation & Advisory Guidance")
+                for adv in t_report["security_advisories"]:
+                    st.markdown(f"- {adv}")
+                if t_score >= 70:
+                    st.caption("🔒 Recommended SOC Policy: Automatically blacklist sender domain and quarantine message.")
+
+
+# -------------------------------------------------------------
+# TAB: Active Learning & Policy Studio
+# -------------------------------------------------------------
+with tab_learning:
+    st.subheader("🧠 Active Learning & Security Policy Studio")
+    st.write(
+        "Empower continuous self-improvement through Human-in-the-Loop feedback. "
+        "Correct misclassified emails to fine-tune model parameters and manage persistent sender whitelist/blacklist policies."
+    )
+
+    fb_stats = get_feedback_stats()
+
+    # Feedback KPIs
+    f1, f2, f3, f4 = st.columns(4)
+    f1.metric("Total Feedback Logged", fb_stats["total_feedback"])
+    f2.metric("False Positives Corrected", fb_stats["false_positives_corrected"])
+    f3.metric("False Negatives Corrected", fb_stats["false_negatives_corrected"])
+    f4.metric("Agreement Confirmations", fb_stats["confirmed_correct"])
+
+    # Section 1: Retraining Engine
+    with st.container(border=True):
+        st.markdown("#### ⚡ Supervised Model Retraining on Feedback")
+        st.write(
+            "Trigger an automated supervised retraining pass that synthesizes the baseline dataset with all verified user feedback. "
+            "New models are evaluated against validation thresholds before updating active weights."
+        )
+
+        col_retrain, col_feedback_clear = st.columns([2, 2])
+        with col_retrain:
+            if st.button("🚀 Retrain Models on User Feedback", type="primary", width="stretch", key="retrain_models_btn"):
+                with st.spinner("Retraining TF-IDF vectorizer and recalibrating Naive Bayes & Linear SVM..."):
+                    retrain_res = retrain_model_with_feedback(min_feedback_required=1)
+                if retrain_res["success"]:
+                    st.success(retrain_res["message"])
+                    st.rerun()
+                else:
+                    st.warning(retrain_res["message"])
+
+        with col_feedback_clear:
+            if st.button("🗑️ Clear Feedback Data", width="stretch", key="clear_fb_btn"):
+                from src.active_learning import clear_feedback_data
+                clear_feedback_data()
+                st.success("Feedback log cleared.")
+                st.rerun()
+
+    # Section 2: Feedback Log Table
+    with st.container(border=True):
+        st.markdown("#### 📋 User Corrections & Active Learning Queue")
+        fb_records = get_feedback_records(limit=25)
+        if not fb_records:
+            st.info("No user feedback logged yet. You can report false positives/negatives in the 'Live Classifier' tab.")
+        else:
+            df_fb = pd.DataFrame(fb_records)
+            st.dataframe(df_fb, width="stretch", hide_index=True)
+
+    # Section 3: Sender Reputation Policies
+    with st.container(border=True):
+        st.markdown("#### 🛡️ Sender Whitelist & Blacklist Policy Manager")
+        rules = get_sender_rules()
+
+        col_w_list, col_b_list = st.columns(2)
+
+        with col_w_list:
+            st.markdown("**🟢 Whitelisted Senders (Always Safe)**")
+            st.caption("Emails from these domains bypass spam quarantining.")
+            for s in rules.get("whitelist", []):
+                cw1, cw2 = st.columns([4, 1])
+                cw1.write(f"- `{s}`")
+                if cw2.button("❌", key=f"del_w_{s}"):
+                    remove_sender_rule(s)
+                    st.rerun()
+
+            new_white = st.text_input("Add Sender / Domain to Whitelist:", placeholder="e.g. partner-domain.com", key="add_white_input")
+            if st.button("➕ Add to Whitelist", key="btn_add_white"):
+                if new_white.strip():
+                    add_to_whitelist(new_white.strip())
+                    st.success(f"Added '{new_white.strip()}' to whitelist!")
+                    st.rerun()
+
+        with col_b_list:
+            st.markdown("**🔴 Blacklisted Senders (Always Quarantine)**")
+            st.caption("Emails from these domains are immediately isolated.")
+            for b in rules.get("blacklist", []):
+                cb1, cb2 = st.columns([4, 1])
+                cb1.write(f"- `{b}`")
+                if cb2.button("❌", key=f"del_b_{b}"):
+                    remove_sender_rule(b)
+                    st.rerun()
+
+            new_black = st.text_input("Add Sender / Domain to Blacklist:", placeholder="e.g. phish-site.ru", key="add_black_input")
+            if st.button("➕ Add to Blacklist", key="btn_add_black"):
+                if new_black.strip():
+                    add_to_blacklist(new_black.strip())
+                    st.warning(f"Added '{new_black.strip()}' to blacklist!")
+                    st.rerun()
+
 
 # -------------------------------------------------------------
 # TAB 1: Live Email Classifier
@@ -364,22 +913,34 @@ with tab_live:
             else:
                 st.info("No strong vocabulary triggers found from the model dictionary.")
 
+            # Human-in-the-Loop Feedback Controls
+            with st.container(border=True):
+                st.markdown("#### 🙋 Human-in-the-Loop Feedback (Active Learning)")
+                st.write("Disagree with this prediction? Submit your correction to train the system.")
 
-# -------------------------------------------------------------
-# TAB: Live Gmail Scanner
+                fb_col1, fb_col2 = st.columns([3, 2])
+                with fb_col1:
+                    fb_comment = st.text_input("Correction Note (Optional):", placeholder="e.g. Legitimate vendor invoice, or subtle phishing scam", key="live_fb_comment")
+
+                with fb_col2:
+                    st.write("")
+                    st.write("")
+                    if is_spam:
+                        if st.button("✅ Mark as False Positive (It's Ham)", type="secondary", width="stretch", key="fb_fp_btn"):
+                            record_feedback(email_input, predicted_label="Spam", user_label="Ham", user_comment=fb_comment)
+                            st.success("Logged as False Positive! Head to 'Active Learning & Policy Studio' tab to retrain.")
+                    else:
+                        if st.button("🚨 Mark as False Negative (It's Spam)", type="secondary", width="stretch", key="fb_fn_btn"):
+                            record_feedback(email_input, predicted_label="Ham", user_label="Spam", user_comment=fb_comment)
+                            st.warning("Logged as Missed Spam! Head to 'Active Learning & Policy Studio' tab to retrain.")
+
+
 # -------------------------------------------------------------
 # TAB: Live Gmail Scanner
 # -------------------------------------------------------------
 with tab_gmail:
     st.subheader("📬 Scan Your Real Gmail Inbox for Spam")
     st.write("Connect your Gmail account to scan, analyze, and detect spam messages directly from your inbox.")
-
-    # Check for Firebase OAuth token passed in query parameters
-    if "google_token" in st.query_params:
-        st.session_state["google_token"] = st.query_params.get("google_token")
-        st.session_state["user_email"] = st.query_params.get("user_email", "")
-        st.session_state["user_name"] = st.query_params.get("user_name", "")
-        st.query_params.clear()
 
     st.info(
         "💡 **Two ways to connect Gmail:**\n"
@@ -462,19 +1023,25 @@ with tab_gmail:
     st.markdown("---")
 
     # SECTION 2: 1-Click Sign in with Google (Firebase)
-    with st.expander("🔴 Method B: 1-Click Google Sign-In (Firebase OAuth)", expanded=False):
-        st.markdown("""
-        > **⚠️ Note on Google Error ("The requested action is invalid"):**  
-        > Because our app requests permission to scan inbox contents (`gmail.readonly`), Google marks it as a **Restricted Scope**.  
-        > To allow login, open **[Google Cloud OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent?project=spamguard-ai-21bd8)** $\rightarrow$ scroll to **Test Users** $\rightarrow$ click **+ Add Users** and add your email.
-        """)
+    google_token = st.session_state.get("google_token")
+    user_email = st.session_state.get("user_email", "")
+    user_name = st.session_state.get("user_name", "")
 
-        google_token = st.session_state.get("google_token")
-        user_email = st.session_state.get("user_email", "")
-        user_name = st.session_state.get("user_name", "")
+    with st.expander("🔴 Method B: 1-Click Google Sign-In (Firebase OAuth)", expanded=bool(google_token)):
+        st.markdown("""
+        > **ℹ️ How Google OAuth works in SpamGuard AI:**  
+        > - Standard Google Sign-In connects your account identity with 1 click.  
+        > - Scanning your live Gmail inbox requires Google's `gmail.readonly` permission. If Google restricts this scope for your account, you can either add your email to **[Google Cloud Test Users](https://console.cloud.google.com/apis/credentials/consent?project=spamguard-ai-21bd8)**, or connect instantly via **Method A (App Password)** above.
+        """)
 
         if google_token:
             st.success(f"✅ Signed in as **{user_name}** ({user_email})")
+            if google_token == "signed_in":
+                st.warning(
+                    "⚠️ **Authentication Note:** You are authenticated with your Google profile, but live Gmail reading permission (`gmail.readonly`) was not granted or was restricted. "
+                    "To scan live Gmail messages, please **Sign out** below and reconnect with *'Request Gmail scan permission'* enabled (ensuring your email is registered in Google Cloud Test Users), or connect instantly via **Method A (App Password)** above."
+                )
+
             col_oauth1, col_oauth2, col_oauth3 = st.columns([2, 2, 1])
             with col_oauth1:
                 oauth_count = st.slider("Number of emails to scan:", min_value=5, max_value=25, value=10, step=5, key="oauth_count")
@@ -485,122 +1052,272 @@ with tab_gmail:
                     st.session_state.pop("google_token", None)
                     st.session_state.pop("user_email", None)
                     st.session_state.pop("user_name", None)
+                    st.session_state.pop("just_logged_in", None)
                     st.rerun()
 
             if st.button("🚀 Scan Gmail Inbox via Google Account", type="primary", key="oauth_scan_btn", width="stretch"):
-                with st.spinner(f"Fetching and analyzing latest {oauth_count} emails from your Gmail inbox..."):
-                    try:
-                        scanned_emails = scan_gmail_with_oauth(
-                            access_token=google_token,
-                            max_emails=oauth_count,
-                            only_unread=oauth_unread,
-                            model_type=model_code
-                        )
+                if google_token == "signed_in":
+                    st.error("❌ Cannot scan live Gmail: No OAuth access token for Gmail reading was granted. Please use **Method A (App Password)** above or sign out and re-authenticate with Gmail permissions.")
+                else:
+                    with st.spinner(f"Fetching and analyzing latest {oauth_count} emails from your Gmail inbox..."):
+                        try:
+                            scanned_emails = scan_gmail_with_oauth(
+                                access_token=google_token,
+                                max_emails=oauth_count,
+                                only_unread=oauth_unread,
+                                model_type=model_code
+                            )
 
-                        if not scanned_emails:
-                            st.info("No matching emails found in your inbox.")
-                        else:
-                            st.success(f"Successfully retrieved and classified {len(scanned_emails)} emails from Gmail!")
-                            total_s = len(scanned_emails)
-                            spam_s = sum(1 for e in scanned_emails if e["is_spam"])
-                            ham_s = total_s - spam_s
+                            if not scanned_emails:
+                                st.info("No matching emails found in your inbox.")
+                            else:
+                                st.success(f"Successfully retrieved and classified {len(scanned_emails)} emails from Gmail!")
+                                total_s = len(scanned_emails)
+                                spam_s = sum(1 for e in scanned_emails if e["is_spam"])
+                                ham_s = total_s - spam_s
 
-                            gm1, gm2, gm3 = st.columns(3)
-                            gm1.metric("Total Emails Scanned", total_s)
-                            gm2.metric("Spam Detected 🚨", spam_s, delta=f"{spam_s/total_s*100:.1f}%" if spam_s > 0 else "0%", delta_color="inverse")
-                            gm3.metric("Legitimate Emails ✅", ham_s, delta=f"{ham_s/total_s*100:.1f}%")
+                                gm1, gm2, gm3 = st.columns(3)
+                                gm1.metric("Total Emails Scanned", total_s)
+                                gm2.metric("Spam Detected 🚨", spam_s, delta=f"{spam_s/total_s*100:.1f}%" if spam_s > 0 else "0%", delta_color="inverse")
+                                gm3.metric("Legitimate Emails ✅", ham_s, delta=f"{ham_s/total_s*100:.1f}%")
 
-                            st.markdown("---")
-                            st.subheader("📋 Scanned Gmail Messages")
+                                st.markdown("---")
+                                st.subheader("📋 Scanned Gmail Messages")
 
-                            for idx, item in enumerate(scanned_emails, start=1):
-                                status_title = "SPAM" if item["is_spam"] else "HAM (CLEAN)"
-                                icon = "🚨" if item["is_spam"] else "✅"
+                                for idx, item in enumerate(scanned_emails, start=1):
+                                    status_title = "SPAM" if item["is_spam"] else "HAM (CLEAN)"
+                                    icon = "🚨" if item["is_spam"] else "✅"
 
-                                with st.expander(f"{icon} #{idx} | [{status_title}] {item['subject']} — {item['sender']}", expanded=item["is_spam"]):
-                                    st.write(f"**From:** `{item['sender']}`")
-                                    st.write(f"**Date:** `{item['date']}`")
-                                    st.write(f"**Prediction:** `{item['prediction']}` (Confidence: **{item['confidence']*100:.2f}%** | Spam Probability: **{item['prob_spam']*100:.2f}%**)")
-                                    st.write("**Body Preview:**")
-                                    st.text(item["body_preview"] if item["body_preview"] else "(Empty body)")
+                                    with st.expander(f"{icon} #{idx} | [{status_title}] {item['subject']} — {item['sender']}", expanded=item["is_spam"]):
+                                        st.write(f"**From:** `{item['sender']}`")
+                                        st.write(f"**Date:** `{item['date']}`")
+                                        st.write(f"**Prediction:** `{item['prediction']}` (Confidence: **{item['confidence']*100:.2f}%** | Spam Probability: **{item['prob_spam']*100:.2f}%**)")
+                                        st.write("**Body Preview:**")
+                                        st.text(item["body_preview"] if item["body_preview"] else "(Empty body)")
 
-                                    if item["key_features"]:
-                                        st.write("**Trigger Vocabulary Identified:**")
-                                        chips = ""
-                                        for feat in item["key_features"]:
-                                            c_name = "token-spam" if feat["indicative_of"] == "Spam" else "token-ham"
-                                            chips += f'<span class="token-chip {c_name}">{feat["word"]} ({feat["importance"]:+.2f})</span>'
-                                        st.markdown(chips, unsafe_allow_html=True)
-                    except PermissionError:
-                        st.error("Google session expired. Please sign in again.")
-                        st.session_state.pop("google_token", None)
-                        st.rerun()
-                    except Exception as err:
-                        st.error(f"Error scanning Gmail via OAuth: {err}")
+                                        if item["key_features"]:
+                                            st.write("**Trigger Vocabulary Identified:**")
+                                            chips = ""
+                                            for feat in item["key_features"]:
+                                                c_name = "token-spam" if feat["indicative_of"] == "Spam" else "token-ham"
+                                                chips += f'<span class="token-chip {c_name}">{feat["word"]} ({feat["importance"]:+.2f})</span>'
+                                            st.markdown(chips, unsafe_allow_html=True)
+                        except PermissionError as p_err:
+                            st.error(f"⚠️ {p_err}")
+                            if "expired" in str(p_err).lower():
+                                st.session_state.pop("google_token", None)
+                                st.info("ℹ️ Your Google session has expired. Please sign out and sign in again.")
+                        except ValueError as v_err:
+                            st.warning(f"⚠️ {v_err}")
+                        except Exception as err:
+                            st.error(f"Error scanning Gmail via OAuth: {err}")
         else:
             FIREBASE_AUTH_HTML = """
-            <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 22px; border-radius: 14px; border: 1px solid #334155; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                <h4 style="color: #f8fafc; margin-top: 0; margin-bottom: 8px; font-size: 1.15rem;">Sign In with Google via Firebase</h4>
-                <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 16px;">
-                    Authenticate with 1 click. Zero passwords required. Read-only access to scan your inbox for spam.
-                </p>
-                <button id="google-login-btn" style="background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; padding: 11px 22px; font-size: 15px; font-weight: 600; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); transition: all 0.2s ease;">
-                    <svg width="18" height="18" viewBox="0 0 18 18">
-                        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/>
-                        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-                        <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707 0-.59.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.347 2.825.957 4.039l3.007-2.332z"/>
-                        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
-                    </svg>
-                    Sign in with Google
-                </button>
-                <div id="auth-status" style="margin-top: 12px; font-size: 13px; color: #38bdf8; min-height: 20px;"></div>
-            </div>
-
-            <script type="module">
-                import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
-                import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
-
-                const firebaseConfig = {
-                  apiKey: "AIzaSyDNhwoiC3CxkdrlvgKaUoUwKZvhkq2x1i8",
-                  authDomain: "spamguard-ai-21bd8.firebaseapp.com",
-                  projectId: "spamguard-ai-21bd8",
-                  storageBucket: "spamguard-ai-21bd8.firebasestorage.app",
-                  messagingSenderId: "607207854512",
-                  appId: "1:607207854512:web:31cc67ea31bd0e8af48675",
-                  measurementId: "G-9DZRTJHZR2"
-                };
-
-                const app = initializeApp(firebaseConfig);
-                const auth = getAuth(app);
-                const provider = new GoogleAuthProvider();
-                provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-
-                const btn = document.getElementById('google-login-btn');
-                const status = document.getElementById('auth-status');
-
-                btn.addEventListener('click', async () => {
-                    status.innerText = "Opening Google Sign-In popup...";
-                    try {
-                        const result = await signInWithPopup(auth, provider);
-                        const credential = GoogleAuthProvider.credentialFromResult(result);
-                        const token = credential.accessToken;
-                        const email = result.user.email;
-                        const name = result.user.displayName || "";
-                        status.innerText = `Connected as ${email}! Redirecting...`;
-
-                        const currentUrl = new URL(window.location.href);
-                        currentUrl.searchParams.set("google_token", token);
-                        currentUrl.searchParams.set("user_email", email);
-                        if (name) currentUrl.searchParams.set("user_name", name);
-                        window.location.href = currentUrl.toString();
-                    } catch (error) {
-                        console.error("Firebase auth error:", error);
-                        status.innerHTML = `<span style="color: #ef4444;">Login Error: ${error.message}</span>`;
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8" />
+                <style>
+                    * { box-sizing: border-box; }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background: transparent;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                     }
-                });
-            </script>
+                    .auth-card {
+                        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                        padding: 20px 24px;
+                        border-radius: 14px;
+                        border: 1px solid #334155;
+                        text-align: center;
+                    }
+                    .auth-title {
+                        color: #f8fafc;
+                        margin: 0 0 6px 0;
+                        font-size: 1.15rem;
+                        font-weight: 700;
+                    }
+                    .auth-subtitle {
+                        color: #94a3b8;
+                        font-size: 0.88rem;
+                        margin: 0 0 14px 0;
+                    }
+                    .google-btn {
+                        background: #ffffff;
+                        color: #1e293b;
+                        border: 1px solid #e2e8f0;
+                        padding: 11px 22px;
+                        font-size: 15px;
+                        font-weight: 600;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 10px;
+                        box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+                        transition: all 0.2s ease;
+                    }
+                    .google-btn:hover {
+                        background: #f8fafc;
+                        box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+                    }
+                    .google-btn:disabled {
+                        opacity: 0.6;
+                        cursor: not-allowed;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="auth-card">
+                    <h4 class="auth-title">Sign In with Google via Firebase</h4>
+                    <p class="auth-subtitle">Fast authentication with Google. Zero passwords required.</p>
+                    
+                    <div id="domain-warning" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 8px; padding: 10px; margin-bottom: 14px; color: #fca5a5; font-size: 13px; text-align: left;">
+                        ⚠️ <b>Domain Notice:</b> You are accessing this app via <code>127.0.0.1</code>. Firebase OAuth requires <code>localhost</code>.<br/>
+                        👉 <a href="http://localhost:8501" target="_top" style="color: #38bdf8; text-decoration: underline; font-weight: 600;">Click here to open on http://localhost:8501</a> before signing in.
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <label style="color: #cbd5e1; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="request-gmail-scope" checked style="cursor: pointer;" />
+                            <span>Request Gmail scan permission (<code>gmail.readonly</code>) to fetch inbox emails</span>
+                        </label>
+                    </div>
+
+                    <button id="google-login-btn" class="google-btn" onclick="startGoogleLogin()">
+                        <svg width="18" height="18" viewBox="0 0 18 18">
+                            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/>
+                            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+                            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707 0-.59.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.347 2.825.957 4.039l3.007-2.332z"/>
+                            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+                        </svg>
+                        Sign in with Google
+                    </button>
+                    <div id="auth-status" style="margin-top: 14px; font-size: 13px; color: #38bdf8; min-height: 20px; line-height: 1.5; text-align: left;"></div>
+                </div>
+
+                <script type="module">
+                    import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+                    import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
+
+                    const firebaseConfig = {
+                      apiKey: "AIzaSyDNhwoiC3CxkdrlvgKaUoUwKZvhkq2x1i8",
+                      authDomain: "spamguard-ai-21bd8.firebaseapp.com",
+                      projectId: "spamguard-ai-21bd8",
+                      storageBucket: "spamguard-ai-21bd8.firebasestorage.app",
+                      messagingSenderId: "607207854512",
+                      appId: "1:607207854512:web:31cc67ea31bd0e8af48675",
+                      measurementId: "G-9DZRTJHZR2"
+                    };
+
+                    let auth = null;
+                    try {
+                        const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+                        auth = getAuth(app);
+                    } catch (e) {
+                        console.error("Firebase init error:", e);
+                    }
+
+                    // Check domain mismatch (127.0.0.1 vs localhost)
+                    try {
+                        let parentHost = "";
+                        try {
+                            parentHost = window.parent.location.hostname;
+                        } catch (e1) {
+                            if (document.referrer) {
+                                parentHost = new URL(document.referrer).hostname;
+                            }
+                        }
+                        if (parentHost === "127.0.0.1") {
+                            const warnBox = document.getElementById('domain-warning');
+                            if (warnBox) warnBox.style.display = "block";
+                        }
+                    } catch (e) {}
+
+                    window.startGoogleLogin = async function() {
+                        const btn = document.getElementById('google-login-btn');
+                        const status = document.getElementById('auth-status');
+                        const scopeCheckbox = document.getElementById('request-gmail-scope');
+                        const wantGmail = scopeCheckbox ? scopeCheckbox.checked : true;
+
+                        status.innerHTML = '<span style="color: #38bdf8;">⏳ Opening Google Sign-In popup...</span>';
+                        if (btn) btn.disabled = true;
+
+                        if (!auth) {
+                            try {
+                                const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+                                auth = getAuth(app);
+                            } catch (e) {
+                                status.innerHTML = `<div style="color: #ef4444;">Firebase connection error: ${e.message}</div>`;
+                                if (btn) btn.disabled = false;
+                                return;
+                            }
+                        }
+
+                        try {
+                            const provider = new GoogleAuthProvider();
+                            if (wantGmail) {
+                                provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+                            }
+                            provider.setCustomParameters({ prompt: 'select_account' });
+
+                            const result = await signInWithPopup(auth, provider);
+                            const credential = GoogleAuthProvider.credentialFromResult(result);
+                            const token = credential ? credential.accessToken : (result._tokenResponse ? result._tokenResponse.oauthAccessToken : "");
+                            const email = result.user.email;
+                            const name = result.user.displayName || "";
+                            status.innerHTML = `<span style="color: #22c55e;">✅ Connected as <b>${email}</b>! Syncing session...</span>`;
+
+                            let targetUrl;
+                            try {
+                                targetUrl = new URL(window.parent.location.href);
+                            } catch (err) {
+                                targetUrl = new URL(document.referrer || window.location.href);
+                            }
+
+                            targetUrl.searchParams.set("google_token", token || "signed_in");
+                            targetUrl.searchParams.set("user_email", email);
+                            if (name) targetUrl.searchParams.set("user_name", name);
+
+                            try {
+                                window.parent.location.href = targetUrl.toString();
+                            } catch (err) {
+                                window.top.location.href = targetUrl.toString();
+                            }
+                        } catch (error) {
+                            console.error("Firebase auth error:", error);
+                            if (btn) btn.disabled = false;
+
+                            let errHtml = `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 8px; padding: 12px; margin-top: 10px; color: #fecaca;">`;
+                            if (error.code === 'auth/unauthorized-domain') {
+                                errHtml += `<b>⚠️ Unauthorized Domain:</b> This domain is not authorized in Firebase.<br/>👉 Please open the app at <a href="http://localhost:8501" target="_top" style="color: #38bdf8; text-decoration: underline;"><b>http://localhost:8501</b></a>.`;
+                            } else if (error.code === 'auth/popup-blocked') {
+                                errHtml += `<b>⚠️ Popup Blocked:</b> The Google sign-in popup was blocked by your browser.<br/>👉 Please allow popups for localhost in your browser's address bar and try again.`;
+                            } else if (error.code === 'auth/popup-closed-by-user') {
+                                errHtml += `<b>ℹ️ Popup Closed:</b> The Google sign-in window was closed before completing authentication. Click the button to try again.`;
+                            } else if (error.message && (error.message.includes("action is invalid") || error.message.includes("403") || error.message.includes("access_denied") || error.code === 'auth/internal-error')) {
+                                errHtml += `<b>⚠️ Google Restricted Scope Notice:</b><br/>Google blocked <code>gmail.readonly</code> because this app is currently in test mode.<br/>`
+                                         + `👉 <b>Option 1:</b> Uncheck <i>"Request Gmail scan permission"</i> above and sign in again with your Google account, OR<br/>`
+                                         + `👉 <b>Option 2:</b> Use <b>Method A (App Password)</b> above which bypasses Google Cloud restrictions completely, OR<br/>`
+                                         + `👉 <b>Option 3:</b> Add your email to <a href="https://console.cloud.google.com/apis/credentials/consent?project=spamguard-ai-21bd8" target="_blank" style="color: #38bdf8; text-decoration: underline;">Google Cloud Console &gt; Test Users</a>.`;
+                            } else {
+                                errHtml += `<b>Login Error (${error.code || 'UNKNOWN'}):</b> ${error.message}`;
+                            }
+                            errHtml += `</div>`;
+                            status.innerHTML = errHtml;
+                        }
+                    };
+
+                    const btnElem = document.getElementById('google-login-btn');
+                    if (btnElem) {
+                        btnElem.addEventListener('click', window.startGoogleLogin);
+                    }
+                </script>
+            </body>
+            </html>
             """
-            st.html(FIREBASE_AUTH_HTML, unsafe_allow_javascript=True)
+            components.html(FIREBASE_AUTH_HTML, height=290)
 
 
 # -------------------------------------------------------------

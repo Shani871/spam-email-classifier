@@ -46,7 +46,16 @@ AI Project/
 │   ├── __init__.py
 │   ├── preprocessing.py             # NLP text cleaning, normalization, and tokenization
 │   ├── train.py                     # ML pipeline training, evaluation, and model serialization
-│   └── predict.py                   # High-level inference engine with CLI and word attribution
+│   ├── predict.py                   # High-level inference engine with CLI and word attribution
+│   ├── security_analyzer.py         # URL forensics, typosquatting, & psychological coercion analyzer
+│   ├── ai_threat_intelligence.py    # Multi-tier threat scoring (0-100) & attack vector classifier
+│   ├── automation_worker.py         # Autonomous 24/7 background inbox monitor & triage daemon
+│   ├── active_learning.py           # Human-in-the-loop feedback logging & model retraining
+│   ├── attachment_analyzer.py       # Email attachment & payload security forensics
+│   ├── gmail_actions.py             # Inbox remediation policies & sender whitelist/blacklist
+│   ├── llm_threat_reasoning.py      # LLM & offline deep threat reasoning engine
+│   ├── gmail_scanner.py             # IMAP SSL inbox scanner
+│   └── gmail_api.py                 # REST OAuth 2.0 inbox scanner
 │
 ├── models/
 │   ├── spam_classifier_nb.pkl       # Serialized Multinomial Naive Bayes pipeline
@@ -57,12 +66,17 @@ AI Project/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_preprocessing.py        # 5 unit tests for text cleaning edge cases
-│   └── test_model.py                # 6 unit tests for model predictions, bounds, and pipelines
+│   ├── test_model.py                # 6 unit tests for model predictions, bounds, and pipelines
+│   ├── test_security_analyzer.py    # 6 unit tests for URL forensics and urgency analysis
+│   ├── test_automation.py           # 3 unit tests for threat intelligence and background worker
+│   ├── test_active_learning.py      # 2 unit tests for feedback logging and validation
+│   ├── test_attachment_analyzer.py  # 6 unit tests for double extensions and payload risks
+│   └── test_gmail_actions.py        # 2 unit tests for whitelist/blacklist and remediation
 │
 ├── scripts/
 │   └── prepare_dataset.py           # Dataset acquisition and modern sample enrichment script
 │
-├── app.py                           # Modern Streamlit interactive web dashboard
+├── app.py                           # Modern Streamlit SOC & Email Classifier dashboard
 ├── requirements.txt                 # Project dependencies
 └── README.md                        # Project documentation and Viva preparation guide
 ```
@@ -144,19 +158,30 @@ pytest tests/ -v
 
 ## 🌐 Web Interface Features (`app.py`)
 
-1. **Live Email Classifier**:
+1. **Autonomous AI Inbox Monitor (SOC)**:
+   - 24/7 background worker daemon with configurable polling intervals.
+   - Continuous triage telemetry: Total Scanned, Threats Quarantined, Spam Blocked, Clean Passed.
+   - Real-time threat audit stream with attack vector classification and deduplication.
+2. **AI Threat Intelligence & Security Forensics**:
+   - Multi-tier Phishing Threat Score (0–100) combining ML with forensic heuristics.
+   - URL & Link inspection: Deceptive anchor mismatch, direct IP addresses, high-risk TLDs, and brand typosquatting (mimicking PayPal, Chase, Apple, Amazon, etc.).
+   - Psychological Coercion breakdown: Urgency, Fear, Financial coercion, and Greed bait triggers.
+   - Actionable remediation advisories for SOC analysts and users.
+3. **Live Email Classifier**:
    - Paste any email subject and body or choose from 5 one-click scenario presets (*Lottery Scam, PayPal Phishing, Corporate Sprint Sync, Project Report Submission, Bank Wire Fraud*).
    - Adjustable sensitivity threshold slider ($0.10$ to $0.90$).
    - Real-time prediction badges (*🚨 SPAM* vs *✅ LEGITIMATE*).
    - Calibrated confidence percentage bar.
    - **Explainability**: Highlights detected keywords with positive/negative TF-IDF feature attribution.
-2. **Model Comparison & Metrics**:
+4. **Live Gmail Scanner**:
+   - Connect via 16-character App Password (IMAP SSL) or 1-click Google OAuth 2.0 to scan real inboxes.
+5. **Model Comparison & Metrics**:
    - Side-by-side performance table.
    - Heatmap confusion matrices for Naive Bayes and SVM.
    - Global top 10 spam trigger vocabulary ranking.
-3. **NLP Preprocessing Inspector**:
+6. **NLP Preprocessing Inspector**:
    - Step-by-step visual dissection: Raw Text $\rightarrow$ Lowercasing $\rightarrow$ Entity normalization $\rightarrow$ Punctuation removal $\rightarrow$ Stopword filtering $\rightarrow$ Cleaned representation.
-4. **Batch CSV Processing**:
+7. **Batch CSV Processing**:
    - Upload any CSV file with email texts $\rightarrow$ Classify all rows $\rightarrow$ Download classified CSV with predictions and confidence scores.
 
 ---

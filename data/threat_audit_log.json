@@ -1,0 +1,40 @@
+[
+  {
+    "id": "sim-002-1790302892",
+    "timestamp": "2026-09-25 07:51:32",
+    "sender": "sarah.jenkins@company.com",
+    "subject": "Quarterly Financial Planning Sync Notes & Slide Deck",
+    "action": "CLEARED_HAM",
+    "threat_score": 0,
+    "threat_level": "CLEAN / SAFE",
+    "threat_color": "#22c55e",
+    "attack_vector": "Benign Business / Personal Communication",
+    "tactics_detected": [],
+    "advisories": [
+      "\u2705 No active phishing tactics or deceptive links detected. Safe to read."
+    ]
+  },
+  {
+    "id": "sim-001-1790302892",
+    "timestamp": "2026-09-25 07:51:32",
+    "sender": "service@paypa1-security-update.com",
+    "subject": "CRITICAL: Your PayPal Account will be suspended within 24 hours",
+    "action": "QUARANTINED",
+    "threat_score": 100,
+    "threat_level": "CRITICAL ATTACK",
+    "threat_color": "#ef4444",
+    "attack_vector": "Credential Harvesting & Brand Spoofing",
+    "tactics_detected": [
+      "High-Risk Domain / Suspicious TLD Detected",
+      "Brand Impersonation / Typosquatting: Mimicking 'Paypal'",
+      "Artificial Urgency & Deadline Manipulation",
+      "Fear & Intimidation (Threats of account suspension or penalties)"
+    ],
+    "advisories": [
+      "\u26a0\ufe0f Destination domain uses a high-risk TLD frequently abused in spam campaigns.",
+      "\ud83d\udea8 Brand Spoofing: Domain appears engineered to impersonate Paypal.",
+      "\u23f3 Uses artificial time pressure to force hasty decisions without verification.",
+      "\ud83d\udee1\ufe0f Common phishing lure: Threats of account suspension or unauthorized access."
+    ]
+  }
+]
