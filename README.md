@@ -34,7 +34,7 @@ Calibrated Probability Output                               Calibrated Probabili
 ## 📂 Project Structure
 
 ```text
-AI Project/
+spam-email-classifier/
 │
 ├── dataset/
 │   └── spam.csv                     # Curated dataset (5,183 samples: Ham & Spam)
@@ -76,6 +76,9 @@ AI Project/
 ├── scripts/
 │   └── prepare_dataset.py           # Dataset acquisition and modern sample enrichment script
 │
+├── docs/
+│   └── configuration.md             # Phase 1 configuration, runtime data, and artifact handling notes
+│
 ├── app.py                           # Modern Streamlit SOC & Email Classifier dashboard
 ├── requirements.txt                 # Project dependencies
 └── README.md                        # Project documentation and Viva preparation guide
@@ -110,8 +113,9 @@ In real-world email filtering, **a False Positive is significantly worse than a 
 ### 1. Environment Setup
 
 ```bash
-# Clone or navigate to the repository
-cd "/Users/shanichauhan/Developer/AI Project"
+# Clone and enter the repository
+git clone https://github.com/Shani871/spam-email-classifier.git
+cd spam-email-classifier
 
 # Create and activate Python virtual environment
 python3 -m venv .venv
@@ -121,7 +125,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Dataset Preparation & Model Training
+### 2. Configuration & Secrets (Phase 1)
+
+```bash
+cp .env.example .env
+```
+
+- Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) in `.env` only if you want live Gemini-powered threat reasoning.
+- `.env`, `.env.*`, and `.streamlit/secrets.toml` are local-only and should not be committed.
+- The current Streamlit UI still uses embedded Firebase client configuration in `app.py`; moving it is deferred to a later behavior-sensitive phase.
+- Existing tracked runtime/data/model files are intentionally preserved in this phase (no destructive cleanup).
+- See `docs/configuration.md` for data/runtime/artifact handling in this phase.
+
+### 3. Dataset Preparation & Model Training
 
 ```bash
 # Prepare dataset (if dataset/spam.csv is missing)
@@ -131,7 +147,7 @@ python scripts/prepare_dataset.py
 python src/train.py
 ```
 
-### 3. Run Predictions from CLI
+### 4. Run Predictions from CLI
 
 ```bash
 # Predict spam sample with Naive Bayes
@@ -141,14 +157,14 @@ python src/predict.py "Congratulations! You won a $1,000 gift card. Click here t
 python src/predict.py "Meeting scheduled for tomorrow at 10 AM to discuss sprint backlog." --model svm
 ```
 
-### 4. Launch Streamlit Web Application
+### 5. Launch Streamlit Web Application
 
 ```bash
 streamlit run app.py
 ```
 Open your browser at `http://localhost:8501`.
 
-### 5. Run Automated Tests
+### 6. Run Automated Tests
 
 ```bash
 pytest tests/ -v

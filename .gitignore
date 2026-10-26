@@ -12,22 +12,50 @@ __pycache__/
 # Pytest / testing artifacts
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
+
+# Local environment & secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+.streamlit/secrets/*.toml
+credentials*.json
+
+# Logs / runtime state
+*.log
+logs/
+tmp/
+temp/
+data/runtime/
+
+# Python tool caches
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.cache/
 
 # macOS system files
 .DS_Store
 .AppleDouble
 .LSOverride
 
+# Windows system files
+Thumbs.db
+Desktop.ini
+
 # IDEs & editors
 .vscode/
 .idea/
 *.swp
 *.swo
+.history/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/
 
 # Node.js
 node_modules/
-package-lock.json
