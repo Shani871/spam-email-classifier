@@ -55,13 +55,16 @@ def extract_urls(text: str) -> List[Dict[str, str]]:
     Extracts URLs along with anchor text if HTML tags are present,
     or bare URLs from plain text.
     """
-    results = []
-    seen = set()
+    from src.email_content import html_details
+    results = html_details(text)["links"] if "<" in text else []
+    seen = {item["url"] for item in results}
 
     # 1. Check for HTML anchor tags: <a href="URL">ANCHOR_TEXT</a>
     anchor_pattern = re.compile(r'<a\s+(?:[^>]*?\s+)?href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
     for match in anchor_pattern.finditer(text):
         url = match.group(1).strip()
+        if url.lower().startswith(("data:", "javascript:", "mailto:", "tel:")):
+            continue
         anchor_text = re.sub(r'<[^>]+>', '', match.group(2)).strip()
         if url and url not in seen:
             seen.add(url)
@@ -155,7 +158,7 @@ def analyze_urls(urls: List[Dict[str, str]]) -> Dict[str, Any]:
 
         try:
             parsed = urllib.parse.urlparse(raw_url)
-            domain = parsed.netloc or parsed.path.split("/")[0]
+            domain = parsed.hostname or parsed.path.split("/")[0]
         except Exception:
             domain = raw_url
 
@@ -257,6 +260,12 @@ def inspect_email_security(raw_text: str, headers: Optional[Dict[str, str]] = No
     }
 
     if headers:
+        from src.email_content import address_domain
+        normalized_headers = {k.lower(): v for k, v in headers.items()}
+        from_domain = address_domain(normalized_headers.get("from", ""))
+        reply_domain = address_domain(normalized_headers.get("reply-to", ""))
+        auth_report["reply_to_mismatch"] = bool(from_domain and reply_domain and from_domain != reply_domain)
+        auth_report["evidence_source"] = "Declared headers; authentication results must come from the receiving provider"
         for k, v in headers.items():
             key_lower = k.lower()
             val_lower = str(v).lower()

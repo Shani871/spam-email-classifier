@@ -1,13 +1,11 @@
 """
-LLM Deep Threat Reasoning & Zero-Day Explainer for SpamGuard AI.
-Synthesizes comprehensive natural language threat narratives, detailing attacker motives,
-psychological manipulation tactics, potential compromise consequences, and SOC guidance.
-Supports both offline semantic generation and live Google Gemini API execution.
+Rule-based threat narrative generator for SpamGuard AI.
+Synthesizes natural language threat narratives from structured threat-intelligence output,
+covering attacker motives, psychological manipulation tactics, and recommended containment.
+All analysis is performed locally using heuristic rules — no external AI service is called.
 """
 
 import os
-import json
-import urllib.request
 from typing import Dict, Any, Optional
 
 from src.ai_threat_intelligence import compute_threat_intelligence
@@ -27,9 +25,8 @@ def generate_offline_reasoning(report: Dict[str, Any], subject: str, sender: str
     # Attacker Objective Narrative
     if score >= 75:
         executive_summary = (
-            f"This communication is an active cyber threat classified as '{vector}' with a critical "
-            f"threat score of {score}/100. The sender ('{sender}') is attempting to deceive the recipient "
-            f"into performing an unauthorized or catastrophic action."
+            f"This communication shows indicators associated with '{vector}', with a high "
+            f"risk indicator of {score}/100. Verify the sender and request independently before taking action."
         )
     elif score >= 50:
         executive_summary = (
@@ -38,8 +35,8 @@ def generate_offline_reasoning(report: Dict[str, Any], subject: str, sender: str
         )
     else:
         executive_summary = (
-            f"This email conforms to standard benign business or personal communication (Threat Score: {score}/100). "
-            f"No malicious links, credential lures, or deceptive manipulation tactics were identified."
+            f"No strong warning was found by these checks (Risk indicator: {score}/100). "
+            f"The sender, links, and file contents have not been verified."
         )
 
     # Psychological Exploitation Analysis
@@ -98,10 +95,10 @@ def generate_offline_reasoning(report: Dict[str, Any], subject: str, sender: str
             "**Moderate Risk:** Exposure to marketing tracking, unsolicited spam campaigns, or secondary credential fishing."
         )
     else:
-        blast_radius = "**Negligible Risk:** Normal legitimate communication."
+        blast_radius = "**Limited evidence:** No strong warning found; authenticity has not been verified."
 
     return {
-        "mode": "OFFLINE_SEMANTIC_REASONER",
+        "mode": "RULE_BASED_EXPLANATION",
         "executive_summary": executive_summary,
         "psychological_breakdown": psychological_narrative,
         "technical_breakdown": technical_narrative,
@@ -114,55 +111,13 @@ def explain_threat_with_llm(
     email_text: str,
     subject: str = "",
     sender: str = "",
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    consent: bool = False,
 ) -> Dict[str, Any]:
     """
-    Generates a full AI threat reasoning narrative.
-    Falls back gracefully to the offline semantic reasoner if no API key is provided.
+    Returns a rule-based threat narrative for the given email text.
+    The api_key and consent parameters are accepted for forward-compatibility
+    but have no effect — analysis is always performed locally.
     """
     report = compute_threat_intelligence(email_text)
-
-    # Check for Gemini API key
-    key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-
-    if not key:
-        return generate_offline_reasoning(report, subject, sender)
-
-    # Attempt Live Google Gemini API call
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": (
-                        "You are an elite Cyber Threat Intelligence analyst. Dissect this email and return strict JSON:\n"
-                        f"Subject: {subject}\nSender: {sender}\nContent:\n{email_text}\n\n"
-                        "Return format:\n"
-                        "{\n"
-                        '  "executive_summary": "string",\n'
-                        '  "psychological_breakdown": ["list", "of", "tactics"],\n'
-                        '  "technical_breakdown": ["list", "of", "technical", "evasions"],\n'
-                        '  "blast_radius_assessment": "string",\n'
-                        '  "recommended_containment": ["list", "of", "actions"]\n'
-                        "}"
-                    )
-                }]
-            }]
-        }
-
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=8) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-            # Strip markdown json blocks if present
-            clean_json = raw_text.replace("```json", "").replace("```", "").strip()
-            parsed = json.loads(clean_json)
-            parsed["mode"] = "GEMINI_LIVE_API"
-            return parsed
-
-    except Exception as e:
-        print(f"[LLM Threat Reasoning] Live API call skipped/failed ({e}). Using offline semantic reasoner.")
-        fallback = generate_offline_reasoning(report, subject, sender)
-        fallback["mode"] = f"OFFLINE_SEMANTIC_REASONER (Live API fallback: {e})"
-        return fallback
+    return generate_offline_reasoning(report, subject, sender)

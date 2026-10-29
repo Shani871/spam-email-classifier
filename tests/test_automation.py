@@ -30,7 +30,7 @@ def test_compute_threat_intelligence_clean():
     )
     report = compute_threat_intelligence(clean_text, model_type="svm")
     assert report["threat_score"] < 40
-    assert report["threat_level"] in ["CLEAN / SAFE", "LOW RISK"]
+    assert report["threat_level"] in ["NO STRONG WARNING FOUND", "LOW RISK"]
     assert report["is_action_required"] is False
     assert report["attack_vector"] == "Benign Business / Personal Communication"
 

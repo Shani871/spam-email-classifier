@@ -68,25 +68,15 @@ class InboxAutomationWorker:
     Autonomous background worker for continuous email threat surveillance.
     Can operate against real Gmail accounts or automated simulated feeds.
     """
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(cls, *args, **kwargs):
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super(InboxAutomationWorker, cls).__new__(cls)
-                cls._instance._initialized = False
-            return cls._instance
-
     def __init__(
         self,
         interval_seconds: int = 30,
         email_address: str = "",
         app_password: str = "",
-        model_type: str = "svm"
+        model_type: str = "svm",
+        user_id: str = "local"
     ):
-        if self._initialized:
-            return
+        self.user_id = user_id
 
         self.interval_seconds = max(5, interval_seconds)
         self.email_address = email_address
@@ -95,7 +85,9 @@ class InboxAutomationWorker:
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
-        self._worker_lock = threading.Lock()
+        self._worker_lock = threading.RLock()
+        self._scan_lock = threading.RLock()
+        self._stop_event = threading.Event()
         self._sim_index = 0
 
         self.stats = {
@@ -115,39 +107,19 @@ class InboxAutomationWorker:
         self._initialized = True
 
     def _ensure_storage(self):
-        os.makedirs(DATA_DIR, exist_ok=True)
+        pass
 
     def _load_state(self):
-        try:
-            if os.path.exists(PROCESSED_FILE):
-                with open(PROCESSED_FILE, "r", encoding="utf-8") as f:
-                    self.processed_ids = set(json.load(f))
-        except Exception:
-            self.processed_ids = set()
-
-        try:
-            if os.path.exists(AUDIT_LOG_FILE):
-                with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
-                    self.audit_log = json.load(f)
-                    # Recalculate stats from existing audit logs
-                    self.stats["total_scanned"] = len(self.audit_log)
-                    self.stats["threats_quarantined"] = sum(1 for e in self.audit_log if e.get("action") == "QUARANTINED")
-                    self.stats["spam_flagged"] = sum(1 for e in self.audit_log if e.get("action") == "FLAGGED_SPAM")
-                    self.stats["clean_passed"] = sum(1 for e in self.audit_log if e.get("action") == "CLEARED_HAM")
-        except Exception:
-            self.audit_log = []
+        # Runtime monitoring is private and ephemeral unless saving is requested.
+        self.processed_ids = set()
+        self.audit_log = []
 
     def _save_state(self):
-        try:
-            with open(PROCESSED_FILE, "w", encoding="utf-8") as f:
-                json.dump(list(self.processed_ids), f, indent=2)
-            with open(AUDIT_LOG_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.audit_log, f, indent=2)
-        except Exception as e:
-            print(f"[Worker Error] Failed to persist state: {e}")
+        pass
 
     def configure_credentials(self, email_address: str, app_password: str):
         with self._worker_lock:
+            self.processed_ids.clear()
             self.email_address = email_address.strip()
             self.app_password = app_password.strip()
 
@@ -160,8 +132,10 @@ class InboxAutomationWorker:
 
     def start(self):
         with self._worker_lock:
-            if self._running:
+            if self._running or (self._thread is not None and self._thread.is_alive()):
                 return
+            self._stop_event.clear()
+            self._started_at = time.monotonic()
             self._running = True
             self.stats["status"] = "RUNNING"
             self._thread = threading.Thread(target=self._run_loop, daemon=True)
@@ -173,6 +147,7 @@ class InboxAutomationWorker:
             if not self._running:
                 return
             self._running = False
+            self._stop_event.set()
             self.stats["status"] = "STOPPED"
             print("[SpamGuard Daemon] Autonomous worker stopped.")
 
@@ -210,6 +185,11 @@ class InboxAutomationWorker:
             }]
 
     def scan_once(self) -> List[Dict[str, Any]]:
+        from src.user_storage import user_scope
+        with self._scan_lock, user_scope(self.user_id):
+            return self._scan_once()
+
+    def _scan_once(self) -> List[Dict[str, Any]]:
         """
         Executes a single triage pass over candidate emails.
         """
@@ -217,18 +197,21 @@ class InboxAutomationWorker:
         new_results = []
 
         for item in candidates:
-            msg_id = str(item.get("id"))
+            msg_id = f"{self.email_address}:{item.get('uidvalidity', 'demo')}:{item.get('id')}"
             if msg_id in self.processed_ids:
                 continue
 
             full_text = item.get("full_text") or f"Subject: {item.get('subject', '')}\n\n{item.get('body_preview', '')}"
-            report = compute_threat_intelligence(full_text, model_type=self.model_type)
+            report = compute_threat_intelligence(full_text, model_type=self.model_type, headers=item.get("headers"), attachments=item.get("attachments"))
 
             # Auto-Triage Decision Matrix
             threat_score = report["threat_score"]
-            if threat_score >= 75:
-                action = "QUARANTINED"
-                self.stats["threats_quarantined"] += 1
+            from src.gmail_actions import evaluate_remediation_policy
+            policy = evaluate_remediation_policy(item.get("sender", ""), threat_score, report["ml_result"]["is_spam"])
+            if policy["quarantine_recommended"]:
+                action = "QUARANTINE_RECOMMENDED"
+                self.stats.setdefault("quarantine_recommended", 0)
+                self.stats["quarantine_recommended"] += 1
             elif threat_score >= 50 or report["ml_result"]["is_spam"]:
                 action = "FLAGGED_SPAM"
                 self.stats["spam_flagged"] += 1
@@ -240,7 +223,9 @@ class InboxAutomationWorker:
             self.processed_ids.add(msg_id)
 
             audit_entry = {
-                "id": msg_id,
+                "id": item.get("id"),
+                "uidvalidity": item.get("uidvalidity", ""),
+                "mode": "LIVE" if self.email_address else "DEMO",
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "sender": item.get("sender", "Unknown"),
                 "subject": item.get("subject", "(No Subject)"),
@@ -255,6 +240,9 @@ class InboxAutomationWorker:
 
             # Insert at top of audit log
             self.audit_log.insert(0, audit_entry)
+            self.audit_log = self.audit_log[:500]
+            if len(self.processed_ids) > 10000:
+                self.processed_ids = {msg_id}
             new_results.append(audit_entry)
 
         self.stats["last_scan_time"] = datetime.now().strftime("%H:%M:%S")
@@ -262,26 +250,27 @@ class InboxAutomationWorker:
         return new_results
 
     def _run_loop(self):
-        while self._running:
+        while not self._stop_event.is_set():
+            if time.monotonic() - self._started_at > 900:
+                self.stop()
+                break
             try:
                 self.scan_once()
             except Exception as e:
-                print(f"[SpamGuard Daemon Loop Exception] {e}")
-
-            # Sleep in 1-second chunks for responsive stopping
-            for _ in range(self.interval_seconds):
-                if not self._running:
-                    break
-                time.sleep(1)
+                self.stats["status"] = "CHECK_FAILED"
+                from src.monitoring import log_error
+                log_error(e, context="automation_scan_loop")
+            if self._stop_event.wait(self.interval_seconds):
+                break
 
     def get_stats(self) -> Dict[str, Any]:
         return dict(self.stats)
 
     def get_recent_audit_logs(self, limit: int = 20) -> List[Dict[str, Any]]:
-        return self.audit_log[:limit]
+        return [dict(entry) for entry in self.audit_log[:limit]]
 
     def clear_audit_logs(self):
-        with self._worker_lock:
+        with self._scan_lock:
             self.audit_log.clear()
             self.processed_ids.clear()
             self.stats = {
@@ -296,7 +285,7 @@ class InboxAutomationWorker:
 
 
 def get_global_worker() -> InboxAutomationWorker:
-    """Returns singleton instance of InboxAutomationWorker."""
+    """Compatibility helper: return a new private worker, never a singleton."""
     return InboxAutomationWorker()
 
 

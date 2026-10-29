@@ -51,5 +51,6 @@ def test_predict_ham_email_svm():
 
 def test_predict_empty_text():
     res = predict_email("", model_type="nb")
-    assert res["label"] == "Ham"
+    assert res["label"] == "Unknown"
+    assert res["assessable"] is False
     assert res["cleaned_text"] == ""

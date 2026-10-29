@@ -95,13 +95,18 @@ def compute_threat_intelligence(
     if "greed_bait" in coercion:
         score += 15.0
         tactics_detected.append("Greed Bait (Fake lottery, cash prizes, or unearned gifts)")
-        advisories.append("🎁 Classic lottery/prize scam: Demands personal details for nonexistent winnings.")
+        advisories.append("Prize-related language was found. Verify the offer independently before sharing personal details.")
 
     # Header failures
     if auth_info.get("spf") == "FAIL":
         score += 15.0
         tactics_detected.append("SPF Authentication Failure (Sender server not authorized)")
         advisories.append("🚫 SPF Verification Failed: The sending mail server is not authorized by the domain owner.")
+
+    if auth_info.get("reply_to_mismatch"):
+        score += 15
+        tactics_detected.append("Sender and reply address use different domains")
+        advisories.append("Verify the reply address independently before sharing information.")
 
     # Attachment forensics
     att_report = inspect_email_attachments(attachments or [])
@@ -131,7 +136,7 @@ def compute_threat_intelligence(
         threat_level = "LOW RISK"
         threat_color = "#38bdf8"
     else:
-        threat_level = "CLEAN / SAFE"
+        threat_level = "NO STRONG WARNING FOUND"
         threat_color = "#22c55e"
 
     # 5. Classify Attack Vector
@@ -150,9 +155,10 @@ def compute_threat_intelligence(
 
     # Default advisory if safe
     if not advisories:
-        advisories.append("✅ No active phishing tactics or deceptive links detected. Safe to read.")
+        advisories.append("No strong warning found in the checks performed. This does not verify the message or its attachments.")
 
     return {
+        "assessment_available": ml_result.get("assessable", True),
         "threat_score": final_score,
         "threat_level": threat_level,
         "threat_color": threat_color,

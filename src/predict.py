@@ -37,19 +37,21 @@ def load_model(model_type: str = "nb"):
     else:
         raise ValueError(f"Unknown model_type '{model_type}'. Choose 'nb' or 'svm'.")
 
-    if key not in _LOADED_MODELS:
-        model_path = os.path.join(MODELS_DIR, filename)
+    import json
+    active_path = os.path.join(MODELS_DIR, "active.json")
+    version = "baseline"
+    directory = MODELS_DIR
+    if os.path.exists(active_path):
+        with open(active_path, encoding="utf-8") as handle:
+            version = json.load(handle)["version"]
+        directory = MODELS_DIR if version == "baseline" else os.path.join(MODELS_DIR, "versions", version)
+    cache_key = (key, version)
+    if cache_key not in _LOADED_MODELS:
+        model_path = os.path.join(directory, filename)
         if not os.path.exists(model_path):
-            from src.train import train_models
-            train_models()
-        try:
-            _LOADED_MODELS[key] = joblib.load(model_path)
-        except Exception:
-            from src.train import train_models
-            train_models()
-            _LOADED_MODELS[key] = joblib.load(model_path)
-
-    return _LOADED_MODELS[key]
+            raise FileNotFoundError("Model unavailable. Train the baseline model from Advanced before checking messages.")
+        _LOADED_MODELS[cache_key] = joblib.load(model_path)
+    return _LOADED_MODELS[cache_key]
 
 
 def explain_prediction(text_cleaned: str, pipeline, top_k: int = 5):
@@ -122,7 +124,7 @@ def predict_email(raw_text: str, model_type: str = "nb") -> dict:
     cleaned = clean_text(raw_text)
     if not cleaned.strip():
         return {
-            "label": "Ham",
+            "label": "Unknown",
             "is_spam": False,
             "confidence": 0.50,
             "prob_spam": 0.50,
@@ -130,10 +132,15 @@ def predict_email(raw_text: str, model_type: str = "nb") -> dict:
             "model_type": model_type,
             "cleaned_text": "",
             "key_features": [],
-            "note": "Empty text provided"
+            "note": "Unable to assess empty text",
+            "assessable": False
         }
 
     pipeline = load_model(model_type)
+    if pipeline.named_steps["vectorizer"].transform([cleaned]).nnz == 0:
+        return {"label": "Unknown", "is_spam": False, "confidence": .5, "prob_spam": .5, "prob_ham": .5,
+                "model_type": model_type, "cleaned_text": cleaned, "key_features": [], "assessable": False,
+                "note": "No recognized model vocabulary; independent verification is required."}
     probabilities = pipeline.predict_proba([cleaned])[0]
     prob_ham = float(probabilities[0])
     prob_spam = float(probabilities[1])
@@ -145,6 +152,7 @@ def predict_email(raw_text: str, model_type: str = "nb") -> dict:
     key_features = explain_prediction(cleaned, pipeline)
 
     return {
+        "assessable": True,
         "label": label,
         "is_spam": is_spam,
         "confidence": round(confidence, 4),

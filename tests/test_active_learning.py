@@ -55,3 +55,21 @@ def test_record_feedback_validation():
 
     with pytest.raises(ValueError):
         record_feedback("Valid email text", "Spam", "InvalidLabel")
+
+
+def test_consent_based_feedback():
+    from src.active_learning import approve_feedback
+    clear_feedback_data()
+
+    # Feedback with explicit consent
+    rec_consented = record_feedback("Sample message", "spam", "ham", consent_given=True)
+    assert rec_consented["consent_given"] is True
+    approve_feedback(rec_consented["id"], admin_user={"is_admin": True})
+    records = get_feedback_records()
+    assert records[0]["approved"] is True
+
+    # Feedback without consent cannot be approved
+    rec_no_consent = record_feedback("Private message", "spam", "ham", consent_given=False)
+    assert rec_no_consent["consent_given"] is False
+    with pytest.raises(ValueError, match="Cannot approve feedback without user consent"):
+        approve_feedback(rec_no_consent["id"], admin_user={"is_admin": True})

@@ -19,41 +19,15 @@ DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 RULES_FILE = os.path.join(DATA_DIR, "sender_rules.json")
 
 
-def _ensure_rules_file():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(RULES_FILE):
-        default_rules = {
-            "whitelist": [
-                "notifications@github.com",
-                "security@google.com",
-                "service@paypal.com",
-                "no-reply@accounts.google.com"
-            ],
-            "blacklist": [
-                "paypa1-security-update.com",
-                "chase-fraud-alert.ru",
-                "international-lottery.xyz"
-            ]
-        }
-        with open(RULES_FILE, "w", encoding="utf-8") as f:
-            json.dump(default_rules, f, indent=2)
+from src.user_storage import read_json, write_json
 
 
 def get_sender_rules() -> Dict[str, List[str]]:
-    """Retrieves current sender whitelist and blacklist."""
-    _ensure_rules_file()
-    try:
-        with open(RULES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"whitelist": [], "blacklist": []}
+    return read_json("sender_rules.json", {"whitelist": [], "blacklist": []})
 
 
 def save_sender_rules(rules: Dict[str, List[str]]):
-    """Saves updated whitelist and blacklist rules."""
-    _ensure_rules_file()
-    with open(RULES_FILE, "w", encoding="utf-8") as f:
-        json.dump(rules, f, indent=2)
+    write_json("sender_rules.json", rules)
 
 
 def add_to_whitelist(sender_or_domain: str) -> bool:
@@ -138,7 +112,7 @@ def evaluate_remediation_policy(
     """
     rep = check_sender_reputation(sender)
 
-    if rep == "WHITELISTED":
+    if rep == "WHITELISTED" and threat_score < 50 and not is_spam:
         return {
             "policy": "DELIVER_INBOX",
             "action": "ALLOWED_BY_WHITELIST",
@@ -182,50 +156,41 @@ def execute_quarantine_imap(
     email_address: str,
     app_password: str,
     email_id: str,
-    destination_folder: str = "[Gmail]/Spam"
+    destination_folder: str = "[Gmail]/Spam",
+    source_folder: str = "INBOX",
+    uidvalidity: str = ""
 ) -> Dict[str, Any]:
-    """
-    Connects to Gmail via IMAP and moves specified email ID to Spam or Trash.
-    """
-    clean_email = re.sub(r'\s+', '', str(email_address or "")).strip()
-    clean_pwd = re.sub(r'[^a-zA-Z0-9]', '', str(app_password or "")).strip()
-
+    """Move only a stable UID, without expunging unrelated messages."""
+    clean_email = str(email_address or "").strip()
+    clean_pwd = re.sub(r"\s+", "", str(app_password or ""))
     if not clean_email or not clean_pwd:
-        return {
-            "success": False,
-            "mode": "SIMULATION",
-            "message": f"Simulated quarantine: Message #{email_id} flagged for removal (Credentials not supplied)."
-        }
-
+        return {"success": False, "mode": "SIMULATION", "message": "No inbox action taken: account is not connected."}
+    if not str(email_id).isdigit() or not uidvalidity:
+        return {"success": False, "message": "Rescan this message before moving it; a stable mailbox identifier is required."}
+    mail = None
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
         mail.login(clean_email, clean_pwd)
-        mail.select("INBOX")
-
-        # Copy to destination folder
-        copy_res, _ = mail.copy(email_id, destination_folder)
-        if copy_res == "OK":
-            # Mark deleted from inbox
-            mail.store(email_id, "+FLAGS", "\\Deleted")
-            mail.expunge()
-            mail.close()
-            mail.logout()
-            return {
-                "success": True,
-                "mode": "LIVE_IMAP",
-                "message": f"Email #{email_id} successfully quarantined to '{destination_folder}'."
-            }
-        else:
-            mail.close()
-            mail.logout()
-            return {
-                "success": False,
-                "mode": "LIVE_IMAP",
-                "message": f"Could not move email to '{destination_folder}'. Server response: {copy_res}"
-            }
-    except Exception as e:
-        return {
-            "success": False,
-            "mode": "LIVE_IMAP",
-            "message": f"IMAP quarantine failed: {str(e)}"
-        }
+        status, _ = mail.select(source_folder)
+        if status != "OK":
+            raise ValueError("Source folder is unavailable.")
+        current = mail.response("UIDVALIDITY")[1]
+        actual = current[0].decode() if current and current[0] else ""
+        if actual != str(uidvalidity):
+            raise ValueError("Mailbox identifiers changed. Rescan before taking action.")
+        if b"MOVE" not in mail.capabilities:
+            raise ValueError("This server does not support safe message moves.")
+        result, _ = mail.uid("MOVE", str(email_id), destination_folder)
+        if result != "OK":
+            raise ValueError("The provider did not confirm the move.")
+        return {"success": True, "mode": "LIVE_IMAP", "message": "Email moved successfully. Rescan the destination folder to restore it."}
+    except ValueError:
+        raise
+    except Exception:
+        return {"success": False, "mode": "LIVE_IMAP", "message": "Move failed. Reconnect or rescan the mailbox and try again."}
+    finally:
+        if mail is not None:
+            try:
+                mail.logout()
+            except Exception:
+                pass

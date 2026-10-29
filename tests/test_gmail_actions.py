@@ -39,8 +39,8 @@ def test_evaluate_remediation_policy():
     # Whitelisted sender
     add_to_whitelist("admin@trusted.org")
     pol_white = evaluate_remediation_policy("admin@trusted.org", threat_score=80, is_spam=True)
-    assert pol_white["policy"] == "DELIVER_INBOX"
-    assert pol_white["quarantine_recommended"] is False
+    assert pol_white["policy"] == "AUTO_QUARANTINE"
+    assert pol_white["quarantine_recommended"] is True
     remove_sender_rule("admin@trusted.org")
 
     # Blacklisted sender

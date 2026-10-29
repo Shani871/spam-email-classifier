@@ -107,15 +107,17 @@ def scan_gmail_inbox(
         )
 
     try:
-        status, _ = mail.select(folder)
+        status, _ = mail.select(folder, readonly=True)
         if status != "OK":
             raise ValueError(f"Could not access folder '{folder}'. Available folders usually include: INBOX, [Gmail]/Spam")
 
         search_criteria = "UNSEEN" if only_unread else "ALL"
-        status, search_data = mail.search(None, search_criteria)
+        status, search_data = mail.uid("SEARCH", None, search_criteria)
         if status != "OK":
             return []
 
+        validity_response = mail.response("UIDVALIDITY")[1]
+        uidvalidity = validity_response[0].decode() if validity_response and validity_response[0] else ""
         email_ids = search_data[0].split()
         if not email_ids:
             return []
@@ -125,7 +127,7 @@ def scan_gmail_inbox(
         results = []
 
         for e_id in recent_ids:
-            res, msg_data = mail.fetch(e_id, "(RFC822)")
+            res, msg_data = mail.uid("FETCH", e_id, "(BODY.PEEK[])")
             if res != "OK" or not msg_data or not msg_data[0]:
                 continue
 
@@ -139,6 +141,14 @@ def scan_gmail_inbox(
 
             # Combined content for NLP classification
             full_text = f"Subject: {subject}\n\n{body}"
+            headers = dict(msg.items())
+            attachments, html_parts = [], []
+            for part in msg.walk():
+                if part.get_filename():
+                    attachments.append({"filename": decode_str(part.get_filename()), "mime_type": part.get_content_type(), "size": len(part.get_payload(decode=True) or b"")})
+                elif part.get_content_type() == "text/html":
+                    html_parts.append((part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8", errors="replace"))
+            security_text = full_text + "\n" + "\n".join(html_parts)
             pred = predict_email(full_text, model_type=model_type)
 
             results.append({
@@ -147,7 +157,12 @@ def scan_gmail_inbox(
                 "sender": sender,
                 "date": date_str,
                 "body_preview": body[:180] + ("..." if len(body) > 180 else ""),
-                "full_text": full_text,
+                "full_text": security_text,
+                "headers": headers,
+                "attachments": attachments,
+                "uidvalidity": uidvalidity,
+                "folder": folder,
+                "provider": "imap",
                 "prediction": pred["label"],
                 "confidence": pred["confidence"],
                 "prob_spam": pred["prob_spam"],
@@ -160,7 +175,6 @@ def scan_gmail_inbox(
 
     finally:
         try:
-            mail.close()
             mail.logout()
         except Exception:
             pass

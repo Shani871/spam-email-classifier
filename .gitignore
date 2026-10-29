@@ -28,6 +28,21 @@ htmlcov/
 # Jupyter checkpoints
 .ipynb_checkpoints/
 
-# Node.js
+# Node.js (no JS build step in this project)
 node_modules/
 package-lock.json
+package.json
+
+# Private account data and server credentials
+data/users/
+data/logs/
+data/backups/
+backups/
+*.log
+*.tar.gz
+.streamlit/secrets.toml
+models/active.json
+models/previous.json
+models/versions/
+models/*.lock
+*.lock

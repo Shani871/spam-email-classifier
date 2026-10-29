@@ -105,3 +105,91 @@ def test_scan_gmail_with_oauth_forbidden_403(mock_get):
 
     with pytest.raises(PermissionError, match="HTTP 403 Forbidden"):
         scan_gmail_with_oauth(access_token="test_token_403")
+
+
+from src.gmail_api import modify_message_labels, get_message_labels
+
+
+def test_modify_message_labels_rejects_dangerous_labels():
+    with pytest.raises(ValueError, match="Only inbox and spam labels can be changed"):
+        modify_message_labels("test_token", "msg123", ["TRASH"], [])
+
+    with pytest.raises(ValueError, match="Only inbox and spam labels can be changed"):
+        modify_message_labels("test_token", "msg123", ["DELETE"], ["INBOX"])
+
+
+def test_modify_message_labels_invalid_id():
+    res = modify_message_labels("test_token", "bad/id!$", ["SPAM"], ["INBOX"])
+    assert res["success"] is False
+    assert "Reconnect and rescan" in res["message"]
+
+
+@patch("requests.post")
+def test_modify_message_labels_provider_success(mock_post):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"id": "msg_001", "labelIds": ["SPAM"]}
+    mock_post.return_value = mock_resp
+
+    result = modify_message_labels("valid_token", "msg_001", ["SPAM"], ["INBOX"])
+    assert result["success"] is True
+    assert "Gmail confirmed the change" in result["message"]
+    assert result["label_ids"] == ["SPAM"]
+
+
+@patch("requests.post")
+def test_modify_message_labels_provider_failure(mock_post):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.text = "Insufficient permissions"
+    mock_post.return_value = mock_resp
+
+    result = modify_message_labels("valid_token", "msg_001", ["SPAM"], ["INBOX"])
+    assert result["success"] is False
+    assert "Gmail did not confirm the change" in result["message"]
+
+
+@patch("requests.get")
+def test_get_message_labels_flow(mock_get):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"id": "msg_001", "labelIds": ["INBOX", "UNREAD"]}
+    mock_get.return_value = mock_resp
+
+    labels = get_message_labels("valid_token", "msg_001")
+    assert labels == ["INBOX", "UNREAD"]
+
+
+@patch("requests.post")
+@patch("requests.get")
+def test_gmail_action_and_undo_cycle(mock_get, mock_post):
+    # Step 1: Query before state
+    get_resp = MagicMock()
+    get_resp.status_code = 200
+    get_resp.json.return_value = {"id": "msg_999", "labelIds": ["INBOX"]}
+    mock_get.return_value = get_resp
+
+    before_labels = get_message_labels("valid_token", "msg_999")
+    assert before_labels == ["INBOX"]
+
+    # Step 2: Move to Spam
+    post_move_resp = MagicMock()
+    post_move_resp.status_code = 200
+    post_move_resp.json.return_value = {"id": "msg_999", "labelIds": ["SPAM"]}
+    mock_post.return_value = post_move_resp
+
+    move_outcome = modify_message_labels("valid_token", "msg_999", ["SPAM"], ["INBOX"])
+    assert move_outcome["success"] is True
+    assert move_outcome["label_ids"] == ["SPAM"]
+
+    # Step 3: Undo move (restore original INBOX, remove SPAM)
+    post_undo_resp = MagicMock()
+    post_undo_resp.status_code = 200
+    post_undo_resp.json.return_value = {"id": "msg_999", "labelIds": ["INBOX"]}
+    mock_post.return_value = post_undo_resp
+
+    original = set(before_labels) & {"SPAM", "INBOX"}
+    undo_outcome = modify_message_labels("valid_token", "msg_999", sorted(original), sorted({"SPAM", "INBOX"} - original))
+    assert undo_outcome["success"] is True
+    assert undo_outcome["label_ids"] == ["INBOX"]
+

@@ -74,7 +74,7 @@ def scan_gmail_with_oauth(
         )
 
     headers = {"Authorization": f"Bearer {access_token}"}
-    query = "is:unread" if only_unread else "in:inbox"
+    query = "in:inbox is:unread" if only_unread else "in:inbox"
 
     url_list = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
     params = {
@@ -130,6 +130,10 @@ def scan_gmail_with_oauth(
         if not body.strip():
             body = snippet
 
+        from src.email_content import payload_metadata
+        attachments, html_body = payload_metadata(payload)
+        security_headers = {h["name"]: h.get("value", "") for h in headers_list}
+
         # Normalize text
         body = re.sub(r'\s+', ' ', body).strip()
         full_text = f"Subject: {subject}\n\n{body}"
@@ -138,6 +142,12 @@ def scan_gmail_with_oauth(
 
         results.append({
             "id": msg_id,
+            "provider": "gmail",
+            "label_ids": msg_json.get("labelIds", []),
+            "thread_id": msg_json.get("threadId", ""),
+            "full_text": full_text + "\n" + html_body,
+            "headers": security_headers,
+            "attachments": attachments,
             "subject": subject,
             "sender": sender,
             "date": date_str,
@@ -151,4 +161,45 @@ def scan_gmail_with_oauth(
             "key_features": pred["key_features"]
         })
 
+    from src.monitoring import record_metric, log_security_event, log_error
+    try:
+        record_metric("inbox_scans")
+        log_security_event("INBOX_SCAN", {"provider": "gmail_oauth", "messages_found": len(results)})
+    except Exception as err:
+        log_error(err, context="gmail_oauth_scan_monitoring")
+
     return results
+
+
+def modify_message_labels(access_token, message_id, add, remove):
+    """Change only reversible inbox/spam labels; never delete messages."""
+    from src.monitoring import record_metric, log_security_event, log_error
+    if not access_token or access_token == "signed_in" or not re.fullmatch(r"[A-Za-z0-9_-]+", str(message_id)):
+        return {"success": False, "message": "Reconnect and rescan before taking action."}
+    if not set(add + remove) <= {"INBOX", "SPAM"}:
+        raise ValueError("Only inbox and spam labels can be changed.")
+    try:
+        response = requests.post(
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/modify",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"addLabelIds": add, "removeLabelIds": remove}, timeout=15)
+        if response.status_code == 200:
+            record_metric("provider_actions")
+            log_security_event("PROVIDER_ACTION_CONFIRMED", {"action": "modify_labels", "message_id": message_id, "add": add, "remove": remove})
+            return {"success": True, "message": "Gmail confirmed the change.", "label_ids": response.json().get("labelIds", [])}
+        log_security_event("PROVIDER_ACTION_FAILED", {"action": "modify_labels", "status_code": response.status_code})
+        return {"success": False, "message": "Gmail did not confirm the change. Reconnect with inbox action permission, then try again."}
+    except requests.RequestException as err:
+        log_error(err, context="gmail_modify_labels")
+        return {"success": False, "message": "Gmail is unavailable. No successful change was recorded."}
+
+
+def get_message_labels(access_token, message_id):
+    if not access_token or access_token == "signed_in" or not re.fullmatch(r"[A-Za-z0-9_-]+", str(message_id)):
+        return None
+    try:
+        response = requests.get(f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+                                headers={"Authorization": f"Bearer {access_token}"}, params={"format": "minimal"}, timeout=15)
+        return response.json().get("labelIds", []) if response.status_code == 200 else None
+    except requests.RequestException:
+        return None

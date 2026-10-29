@@ -83,6 +83,22 @@ def test_psychological_coercion_tactics():
     assert "financial_coercion" in result["coercion_tactics"]
 
 
+def test_extract_urls_skips_non_http_schemes():
+    """data:, javascript:, mailto:, and tel: hrefs must never reach the domain analyzer."""
+    html = (
+        '<a href="data:text/html,<h1>hi</h1>">inline data</a>'
+        '<a href="javascript:alert(1)">xss bait</a>'
+        '<a href="mailto:victim@example.com">email us</a>'
+        '<a href="tel:+15551234567">call us</a>'
+        '<a href="https://legitimate.example.com/path">real link</a>'
+    )
+    extracted = extract_urls(html)
+    urls = [x["url"] for x in extracted]
+    for bad in ("data:", "javascript:", "mailto:", "tel:"):
+        assert not any(u.lower().startswith(bad) for u in urls), f"{bad} URI leaked into results"
+    assert any("legitimate.example.com" in u for u in urls)
+
+
 def test_inspect_email_security_end_to_end():
     text = (
         "Security Alert: Your Chase Bank account is locked! "
