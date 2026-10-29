@@ -110,6 +110,41 @@ def assessment_card(result):
             st.caption("Key guidance and labels are translated. Technical evidence remains in original English; coverage limitations apply.")
 
 
+def step_tracker(current_step: int):
+    """Horizontal 3-step progress bar shown at the top of every main page."""
+    steps = [
+        ("Check", "Paste, upload, or connect inbox"),
+        ("Understand", "See why it's suspicious"),
+        ("Act", "Protect yourself"),
+    ]
+    parts = ['<div style="display:flex;align-items:flex-start;padding:12px 0 20px;gap:0;width:100%;">']
+    for i, (title, desc) in enumerate(steps, 1):
+        done, active = i < current_step, i == current_step
+        circle_bg = "#22C55E" if done else ("#3B82F6" if active else "#1E293B")
+        circle_border = "#22C55E" if done else ("#3B82F6" if active else "#334155")
+        num_color = "#fff" if (done or active) else "#475569"
+        title_color = "#F8FAFC" if active else ("#22C55E" if done else "#475569")
+        desc_color = "#94A3B8" if active else ("#64748B" if done else "#334155")
+        label = "✓" if done else str(i)
+        parts.append(
+            f'<div style="flex:1;text-align:center;">'
+            f'<div style="width:32px;height:32px;border-radius:50%;background:{circle_bg};'
+            f'border:2px solid {circle_border};color:{num_color};display:inline-flex;'
+            f'align-items:center;justify-content:center;font-weight:700;font-size:13px;">{label}</div>'
+            f'<div style="font-weight:600;font-size:13px;color:{title_color};margin-top:6px;">{title}</div>'
+            f'<div style="font-size:11px;color:{desc_color};margin-top:2px;line-height:1.4;">{desc}</div>'
+            f'</div>'
+        )
+        if i < 3:
+            line_color = "#22C55E" if done else "#1E293B"
+            parts.append(
+                f'<div style="flex:0 0 24px;height:2px;background:{line_color};'
+                f'margin-top:15px;align-self:flex-start;border-radius:1px;"></div>'
+            )
+    parts.append('</div>')
+    st.markdown("".join(parts), unsafe_allow_html=True)
+
+
 def download_result(result):
     export = {key: value for key, value in result.items() if key != "report"}
     st.download_button("Download assessment", json.dumps(export, ensure_ascii=False, indent=2),

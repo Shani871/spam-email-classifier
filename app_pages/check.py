@@ -1,11 +1,26 @@
 import hashlib
 import streamlit as st
-from src.ui_shared import analyze
+from src.ui_shared import analyze, step_tracker
 
-st.caption("01 / CHECK")
+step_tracker(1)
 st.title("Is this message worth trusting?")
 st.markdown("Check an email, a job offer, or a payment request before you take the next step.")
 source = st.segmented_control("Message source", ["Paste text", "Email file", "Screenshot or QR", "Connected inbox"], default="Paste text", key="source")
+
+_METHOD_INFO = {
+    "Paste text": ("📋", "Copy any suspicious message — email, SMS, WhatsApp, or job offer — and paste it below."),
+    "Email file": ("📎", "Export the email as .eml from your email app and upload it. Links, headers, and metadata are all checked."),
+    "Screenshot or QR": ("📷", "Upload a screenshot or a QR code image. Text is extracted locally — the image is never sent anywhere."),
+    "Connected inbox": ("📬", "Connect Gmail in Settings and scan recent messages directly without copying anything."),
+}
+_icon, _desc = _METHOD_INFO.get(source, ("📋", ""))
+st.markdown(
+    f'<div style="display:flex;gap:12px;align-items:center;padding:12px 16px;'
+    f'background:rgba(59,130,246,0.07);border-radius:10px;margin:6px 0 14px;">'
+    f'<span style="font-size:22px;">{_icon}</span>'
+    f'<span style="color:#94A3B8;font-size:13px;">{_desc}</span></div>',
+    unsafe_allow_html=True
+)
 
 if source == "Email file":
     from src.eml_reader import parse_email_file
@@ -104,13 +119,19 @@ else:
                 st.caption("Decoded QR content — destination has not been opened")
                 st.code(destination, language=None)
     else:
-        with st.expander("Try an example"):
-            example = st.selectbox("Example message", ["Job offer with a fee", "Ordinary meeting", "Changed invoice details"])
-            if st.button("Use example"):
-                st.session_state["message_input"] = {
-                    "Job offer with a fee": "You are selected for a remote internship. Pay a registration fee of ₹2,000 to confirm your job. Send your Aadhaar and bank details immediately.",
-                    "Ordinary meeting": "Hi team, our project review is tomorrow at 10 AM. Please bring your notes. Thanks!",
-                    "Changed invoice details": "Please pay the outstanding invoice using our new account number: 12345678901. Confirm once paid."}[example]
+        if source == "Paste text":
+            st.markdown("**💡 Not sure what to paste? Try a real example:**")
+            _ex_col1, _ex_col2, _ex_col3 = st.columns(3)
+            _EXAMPLES = {
+                "🪤 Job scam": "You are selected for a remote internship. Pay a registration fee of ₹2,000 to confirm your job. Send your Aadhaar and bank details immediately.",
+                "💳 Fake payment": "Your UPI payment of ₹9,999 is pending. Click here immediately to confirm your bank account: http://paypa1-verify.xyz",
+                "🔑 OTP phishing": "Dear customer, your account will be suspended. Share OTP 847291 with our agent on 8800123456 to verify your identity.",
+            }
+            for _col, (_label, _text) in zip([_ex_col1, _ex_col2, _ex_col3], _EXAMPLES.items()):
+                with _col:
+                    if st.button(_label, use_container_width=True, key=f"ex_{_label}"):
+                        st.session_state["message_input"] = _text
+                        st.rerun()
     with st.form("message_check", border=True):
         category = st.selectbox("What kind of message is this?", ["General message", "Job or internship", "Invoice or payment"])
         text = st.text_area("Message text", height=220, placeholder="Paste the full message here. Remove private details you do not want to submit.", key="message_input", max_chars=50000)
@@ -126,6 +147,15 @@ else:
             with prev_col2:
                 previous_reply_to = st.text_input("Earlier reply-to address (optional)", placeholder="replies@supplier.com", key="previous_reply_to_input")
             filename = st.text_input("Attachment filename (optional)", help="Filename and metadata checks only; file contents will not be scanned.")
+        st.markdown(
+            '<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;'
+            'background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);'
+            'border-radius:8px;margin:6px 0 2px;">'
+            '<span style="font-size:15px;">🔒</span>'
+            '<span style="font-size:12px;color:#86EFAC;">Checked on this server only — '
+            'nothing is sent to any AI service unless you choose it.</span></div>',
+            unsafe_allow_html=True
+        )
         submitted = st.form_submit_button("Check message", type="primary", icon=":material/search:", width="stretch")
     if submitted:
         st.session_state["draft_text"] = text

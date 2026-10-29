@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 import streamlit as st
-from src.ui_shared import result_required, assessment_card, gmail_token
+from src.ui_shared import result_required, assessment_card, gmail_token, step_tracker
 from src.scam_assistant import recovery_steps
 from src.active_learning import record_feedback
 
-st.caption("03 / ACT")
+step_tracker(3)
 st.title("Choose your next step")
 result = result_required()
 assessment_card(result)

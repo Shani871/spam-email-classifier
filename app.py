@@ -31,8 +31,17 @@ for key, default in {"language": "English", "result": None, "checked_text": "", 
 with st.sidebar:
     st.markdown("### :material/shield: SpamGuard AI")
     st.caption("Check before you trust.")
+    st.markdown("---")
+    st.markdown("**How it works**")
+    st.markdown(
+        "**1. Paste or upload** any suspicious message — email, SMS, job offer, or payment request.\n\n"
+        "**2. We check** for scam patterns, fake links, urgency pressure, and impersonated brands.\n\n"
+        "**3. You get** step-by-step recovery guidance and report links if needed."
+    )
+    st.markdown("---")
     st.selectbox("Explanation language", ["English", "Hindi", "Hinglish"], key="language")
-    st.caption("Message checks run on this app's server. Nothing is sent to an external AI service unless you choose it.")
+    st.markdown("---")
+    st.caption("🔒 **Privacy:** All checks run on this server only. Nothing is sent to any external AI service unless you choose it.")
 
 navigation = st.navigation({
     "Your message": [

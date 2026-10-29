@@ -1,8 +1,8 @@
 import streamlit as st
-from src.ui_shared import result_required, assessment_card, download_result
+from src.ui_shared import result_required, assessment_card, download_result, step_tracker
 from src.evidence import highlight_html
 
-st.caption("02 / UNDERSTAND")
+step_tracker(2)
 st.title("Understand the warning")
 result = result_required()
 assessment_card(result)
