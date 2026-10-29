@@ -6,6 +6,31 @@ from src.user_storage import user_scope, purge_expired_records
 
 st.set_page_config(page_title="SpamGuard AI · Check before you trust", page_icon=":material/shield:", layout="centered")
 
+st.markdown("""
+<style>
+/* Tighter, more modern page header */
+h1 { font-size: 2rem !important; font-weight: 700 !important; letter-spacing: -0.02em; }
+/* Softer form container */
+[data-testid="stForm"] { border-radius: 12px !important; }
+/* Example chip buttons — pill shaped, lighter weight */
+div[data-testid="stHorizontalBlock"] > div > div > [data-testid="stBaseButton-secondary"] button {
+    border-radius: 20px !important;
+    font-size: 13px !important;
+    padding: 6px 14px !important;
+    border-color: #CBD5E1 !important;
+    color: #374151 !important;
+    background: #F8FAFC !important;
+}
+div[data-testid="stHorizontalBlock"] > div > div > [data-testid="stBaseButton-secondary"] button:hover {
+    border-color: #2563EB !important;
+    color: #2563EB !important;
+    background: #EFF6FF !important;
+}
+/* Segmented control tabs — slightly more prominent */
+[data-testid="stSegmentedControl"] { margin-bottom: 2px; }
+</style>
+""", unsafe_allow_html=True)
+
 # Reject the old credential-bearing redirect rather than consuming it as identity.
 if "google_token" in st.query_params:
     st.query_params.clear()

@@ -113,33 +113,40 @@ def assessment_card(result):
 def step_tracker(current_step: int):
     """Horizontal 3-step progress bar shown at the top of every main page."""
     steps = [
-        ("Check", "Paste, upload, or connect inbox"),
+        ("Check", "Paste, upload or connect inbox"),
         ("Understand", "See why it's suspicious"),
         ("Act", "Protect yourself"),
     ]
-    parts = ['<div style="display:flex;align-items:flex-start;padding:12px 0 20px;gap:0;width:100%;">']
+    parts = [
+        '<div style="display:flex;align-items:flex-start;padding:16px 0 24px;'
+        'gap:0;width:100%;border-bottom:1px solid #E2E8F0;margin-bottom:8px;">'
+    ]
     for i, (title, desc) in enumerate(steps, 1):
         done, active = i < current_step, i == current_step
-        circle_bg = "#22C55E" if done else ("#3B82F6" if active else "#1E293B")
-        circle_border = "#22C55E" if done else ("#3B82F6" if active else "#334155")
-        num_color = "#fff" if (done or active) else "#475569"
-        title_color = "#F8FAFC" if active else ("#22C55E" if done else "#475569")
-        desc_color = "#94A3B8" if active else ("#64748B" if done else "#334155")
+        if active:
+            circle_bg, circle_border, num_color = "#2563EB", "#2563EB", "#ffffff"
+            title_color, desc_color = "#1D4ED8", "#6B7280"
+        elif done:
+            circle_bg, circle_border, num_color = "#16A34A", "#16A34A", "#ffffff"
+            title_color, desc_color = "#15803D", "#9CA3AF"
+        else:
+            circle_bg, circle_border, num_color = "#F1F5F9", "#CBD5E1", "#94A3B8"
+            title_color, desc_color = "#94A3B8", "#CBD5E1"
         label = "✓" if done else str(i)
         parts.append(
-            f'<div style="flex:1;text-align:center;">'
-            f'<div style="width:32px;height:32px;border-radius:50%;background:{circle_bg};'
+            f'<div style="flex:1;text-align:center;min-width:0;padding:0 4px;">'
+            f'<div style="width:36px;height:36px;border-radius:50%;background:{circle_bg};'
             f'border:2px solid {circle_border};color:{num_color};display:inline-flex;'
-            f'align-items:center;justify-content:center;font-weight:700;font-size:13px;">{label}</div>'
-            f'<div style="font-weight:600;font-size:13px;color:{title_color};margin-top:6px;">{title}</div>'
-            f'<div style="font-size:11px;color:{desc_color};margin-top:2px;line-height:1.4;">{desc}</div>'
+            f'align-items:center;justify-content:center;font-weight:700;font-size:14px;">{label}</div>'
+            f'<div style="font-weight:600;font-size:13px;color:{title_color};margin-top:8px;">{title}</div>'
+            f'<div style="font-size:11px;color:{desc_color};margin-top:3px;line-height:1.4;">{desc}</div>'
             f'</div>'
         )
         if i < 3:
-            line_color = "#22C55E" if done else "#1E293B"
+            line_color = "#16A34A" if done else "#E2E8F0"
             parts.append(
-                f'<div style="flex:0 0 24px;height:2px;background:{line_color};'
-                f'margin-top:15px;align-self:flex-start;border-radius:1px;"></div>'
+                f'<div style="flex:0 0 40px;height:2px;background:{line_color};'
+                f'margin-top:18px;border-radius:2px;flex-shrink:0;"></div>'
             )
     parts.append('</div>')
     st.markdown("".join(parts), unsafe_allow_html=True)

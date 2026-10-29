@@ -15,10 +15,10 @@ _METHOD_INFO = {
 }
 _icon, _desc = _METHOD_INFO.get(source, ("📋", ""))
 st.markdown(
-    f'<div style="display:flex;gap:12px;align-items:center;padding:12px 16px;'
-    f'background:rgba(59,130,246,0.07);border-radius:10px;margin:6px 0 14px;">'
-    f'<span style="font-size:22px;">{_icon}</span>'
-    f'<span style="color:#94A3B8;font-size:13px;">{_desc}</span></div>',
+    f'<div style="display:flex;gap:14px;align-items:center;padding:14px 18px;'
+    f'background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;margin:8px 0 16px;">'
+    f'<span style="font-size:24px;flex-shrink:0;">{_icon}</span>'
+    f'<span style="color:#1E40AF;font-size:13px;line-height:1.5;">{_desc}</span></div>',
     unsafe_allow_html=True
 )
 
@@ -149,10 +149,10 @@ else:
             filename = st.text_input("Attachment filename (optional)", help="Filename and metadata checks only; file contents will not be scanned.")
         st.markdown(
             '<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;'
-            'background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);'
-            'border-radius:8px;margin:6px 0 2px;">'
+            'background:#F0FDF4;border:1px solid #BBF7D0;'
+            'border-radius:8px;margin:6px 0 4px;">'
             '<span style="font-size:15px;">🔒</span>'
-            '<span style="font-size:12px;color:#86EFAC;">Checked on this server only — '
+            '<span style="font-size:12px;color:#15803D;">Checked on this server only — '
             'nothing is sent to any AI service unless you choose it.</span></div>',
             unsafe_allow_html=True
         )
