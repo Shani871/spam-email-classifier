@@ -1,0 +1,40 @@
+{
+  "raw_rows": 44728,
+  "raw_counts": {
+    "CEAS_08/ham": 17312,
+    "CEAS_08/spam": 21842,
+    "UCI_SMS/ham": 4827,
+    "UCI_SMS/spam": 747
+  },
+  "empty_or_invalid_rows": 9,
+  "conflicting_label_rows_removed": 0,
+  "duplicate_normalized_rows_removed": 6872,
+  "usable_rows": 37847,
+  "train_rows": 30277,
+  "test_rows": 7570,
+  "seed": 42,
+  "split": "80/20 stratified by source and label, after normalized-text deduplication",
+  "input_sha256": {
+    "CEAS_08.csv.zip": "a6fbae6788561035e7ee0345b9767d7fc7eddba8d7de95c7dd49961b8967de2a",
+    "sms+spam+collection.zip": "1587ea43e58e82b14ff1f5425c88e17f8496bfcdb67a583dbff9eefaf9963ce3"
+  },
+  "limitations": [
+    "Historical English email/SMS data; not modern scam or multilingual ground truth.",
+    "Near-duplicate messages and campaign overlap may remain.",
+    "Old model scores are diagnostic: prior training overlap is not audited."
+  ],
+  "previous_model_diagnostic": {
+    "nb": {
+      "accuracy": 0.8121532364597094,
+      "precision_spam": 0.7880982367758187,
+      "recall_spam": 0.769680196801968,
+      "f1_spam": 0.7787803360298693
+    },
+    "svm": {
+      "accuracy": 0.7105680317040951,
+      "precision_spam": 0.6423396833914676,
+      "recall_spam": 0.7361623616236163,
+      "f1_spam": 0.6860581745235708
+    }
+  }
+}

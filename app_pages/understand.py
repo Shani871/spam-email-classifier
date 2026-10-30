@@ -36,19 +36,17 @@ if result["evidence"]:
     for item in result["evidence"]:
         loc_item = localize_evidence_item(item, current_lang)
         with st.container(border=True):
-            st.markdown(f"**{loc_item['title']}**")
-            st.caption("Observed evidence · " + loc_item.get("source", "Supplied context"))
+            st.markdown(f"#### :material/warning: {loc_item['title']}")
+            st.caption("Observed evidence · Source: " + loc_item.get("source", "Supplied context"))
             if loc_item.get("sentence"):
                 st.html(highlight_html(loc_item["sentence"], loc_item["excerpt"]))
             elif loc_item.get("excerpt"):
-                st.text(loc_item["excerpt"])
+                st.code(loc_item["excerpt"], language=None)
             if loc_item.get("displayed_text"):
-                st.caption("Displayed link text")
-                st.text(loc_item["displayed_text"])
-            st.caption("Interpretation and next step")
-            st.text(loc_item["advice"])
+                st.caption(f"Displayed link text: `{loc_item['displayed_text']}`")
+            st.info(f"**Actionable Advice:** {loc_item['advice']}", icon=":material/shield:")
 else:
-    st.markdown("No specific warning evidence was found. Verify the sender independently before sharing money or sensitive information.")
+    st.success("No high-risk scam patterns detected. The sender is unverified; practice standard caution before sharing payment or personal details.", icon=":material/check_circle:")
 if result.get("job_check"):
     with st.expander("Verify a job offer", expanded=True):
         st.markdown("1. Find the vacancy on the employer's official careers page.\n2. Contact the employer using contact details you found independently.\n3. Verify the recruiter and the purpose of any document request.\n4. Pause if asked to pay for recruitment or forward money from a check.")

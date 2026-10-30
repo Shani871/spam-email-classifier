@@ -1,0 +1,428 @@
+{
+  "dataset_size": 37847,
+  "train_samples": 30277,
+  "test_samples": 7570,
+  "ham_count": 21587,
+  "spam_count": 16260,
+  "models": {
+    "naive_bayes": {
+      "display_name": "Multinomial Naive Bayes",
+      "accuracy": 0.9487,
+      "precision_spam": 0.9537,
+      "recall_spam": 0.9256,
+      "f1_spam": 0.9395,
+      "roc_auc": 0.9897,
+      "confusion_matrix": {
+        "true_negative": 4172,
+        "false_positive": 146,
+        "false_negative": 242,
+        "true_positive": 3010
+      },
+      "classification_report": {
+        "ham": {
+          "precision": 0.945174444947893,
+          "recall": 0.9661880500231589,
+          "f1-score": 0.9555657352267521,
+          "support": 4318.0
+        },
+        "spam": {
+          "precision": 0.9537389100126743,
+          "recall": 0.9255842558425584,
+          "f1-score": 0.9394506866416978,
+          "support": 3252.0
+        },
+        "accuracy": 0.9487450462351387,
+        "macro avg": {
+          "precision": 0.9494566774802837,
+          "recall": 0.9458861529328586,
+          "f1-score": 0.947508210934225,
+          "support": 7570.0
+        },
+        "weighted avg": {
+          "precision": 0.9488536576811385,
+          "recall": 0.9487450462351387,
+          "f1-score": 0.9486428636285227,
+          "support": 7570.0
+        }
+      },
+      "top_features": {
+        "spam_keywords": [
+          {
+            "word": "replica classics",
+            "score": 8.5141
+          },
+          {
+            "word": "watches replica",
+            "score": 8.0572
+          },
+          {
+            "word": "replica watches",
+            "score": 7.8388
+          },
+          {
+            "word": "life glad",
+            "score": 7.7405
+          },
+          {
+            "word": "think health",
+            "score": 7.6884
+          },
+          {
+            "word": "health personal",
+            "score": 7.6884
+          },
+          {
+            "word": "watches urladdr",
+            "score": 7.4349
+          },
+          {
+            "word": "rolex replica",
+            "score": 7.3044
+          },
+          {
+            "word": "break work",
+            "score": 7.2331
+          },
+          {
+            "word": "september can",
+            "score": 7.2168
+          },
+          {
+            "word": "visit replica",
+            "score": 7.202
+          },
+          {
+            "word": "till 1st",
+            "score": 7.1902
+          },
+          {
+            "word": "vacheron",
+            "score": 7.1882
+          },
+          {
+            "word": "till 30th",
+            "score": 7.1858
+          },
+          {
+            "word": "october can",
+            "score": 7.1581
+          },
+          {
+            "word": "replica watch",
+            "score": 7.1076
+          },
+          {
+            "word": "click url",
+            "score": 7.0921
+          },
+          {
+            "word": "atches",
+            "score": 7.0103
+          },
+          {
+            "word": "replica atches",
+            "score": 6.9548
+          },
+          {
+            "word": "using opera",
+            "score": 6.9237
+          }
+        ],
+        "ham_keywords": [
+          {
+            "word": "python dev",
+            "score": 6.9656
+          },
+          {
+            "word": "python number",
+            "score": 6.8253
+          },
+          {
+            "word": "opensuse",
+            "score": 6.7909
+          },
+          {
+            "word": "re python",
+            "score": 6.7819
+          },
+          {
+            "word": "perl",
+            "score": 6.5618
+          },
+          {
+            "word": "dev",
+            "score": 6.4999
+          },
+          {
+            "word": "linux",
+            "score": 6.4419
+          },
+          {
+            "word": "dev mailing",
+            "score": 6.4229
+          },
+          {
+            "word": "re opensuse",
+            "score": 6.414
+          },
+          {
+            "word": "list emailaddr",
+            "score": 6.4065
+          },
+          {
+            "word": "win32",
+            "score": 6.0429
+          },
+          {
+            "word": "papers",
+            "score": 6.0366
+          },
+          {
+            "word": "spamassassin",
+            "score": 5.9754
+          },
+          {
+            "word": "cheers",
+            "score": 5.9631
+          },
+          {
+            "word": "assignee",
+            "score": 5.9575
+          },
+          {
+            "word": "mar number",
+            "score": 5.9097
+          },
+          {
+            "word": "guido",
+            "score": 5.8082
+          },
+          {
+            "word": "submission",
+            "score": 5.801
+          },
+          {
+            "word": "python win32",
+            "score": 5.7913
+          },
+          {
+            "word": "begin pgp",
+            "score": 5.7896
+          }
+        ]
+      }
+    },
+    "svm": {
+      "display_name": "Support Vector Machine (Linear)",
+      "accuracy": 0.9835,
+      "precision_spam": 0.98,
+      "recall_spam": 0.9815,
+      "f1_spam": 0.9808,
+      "roc_auc": 0.9981,
+      "confusion_matrix": {
+        "true_negative": 4253,
+        "false_positive": 65,
+        "false_negative": 60,
+        "true_positive": 3192
+      },
+      "classification_report": {
+        "ham": {
+          "precision": 0.9860885694412242,
+          "recall": 0.9849467345993516,
+          "f1-score": 0.9855173212837447,
+          "support": 4318.0
+        },
+        "spam": {
+          "precision": 0.9800429843414185,
+          "recall": 0.981549815498155,
+          "f1-score": 0.9807958211706868,
+          "support": 3252.0
+        },
+        "accuracy": 0.9834874504623514,
+        "macro avg": {
+          "precision": 0.9830657768913214,
+          "recall": 0.9832482750487532,
+          "f1-score": 0.9831565712272157,
+          "support": 7570.0
+        },
+        "weighted avg": {
+          "precision": 0.9834914435832892,
+          "recall": 0.9834874504623514,
+          "f1-score": 0.9834890097424417,
+          "support": 7570.0
+        }
+      },
+      "top_features": {
+        "spam_keywords": [
+          {
+            "word": "urladdr",
+            "score": 7.6666
+          },
+          {
+            "word": "font",
+            "score": 2.4157
+          },
+          {
+            "word": "call number",
+            "score": 2.2363
+          },
+          {
+            "word": "health",
+            "score": 2.1356
+          },
+          {
+            "word": "sex",
+            "score": 1.865
+          },
+          {
+            "word": "remedy",
+            "score": 1.8113
+          },
+          {
+            "word": "click url",
+            "score": 1.7841
+          },
+          {
+            "word": "cy",
+            "score": 1.7624
+          },
+          {
+            "word": "men",
+            "score": 1.7206
+          },
+          {
+            "word": "pictures",
+            "score": 1.7069
+          },
+          {
+            "word": "email emailaddr",
+            "score": 1.6633
+          },
+          {
+            "word": "watches",
+            "score": 1.6599
+          },
+          {
+            "word": "ir",
+            "score": 1.6212
+          },
+          {
+            "word": "attached",
+            "score": 1.6094
+          },
+          {
+            "word": "watch",
+            "score": 1.6048
+          },
+          {
+            "word": "dimension",
+            "score": 1.5631
+          },
+          {
+            "word": "relations",
+            "score": 1.5464
+          },
+          {
+            "word": "cast",
+            "score": 1.5346
+          },
+          {
+            "word": "claim",
+            "score": 1.5088
+          },
+          {
+            "word": "conversation",
+            "score": 1.4935
+          }
+        ],
+        "ham_keywords": [
+          {
+            "word": "number urladdr",
+            "score": 2.5226
+          },
+          {
+            "word": "fork",
+            "score": 2.418
+          },
+          {
+            "word": "tony",
+            "score": 2.1723
+          },
+          {
+            "word": "pm urladdr",
+            "score": 1.9612
+          },
+          {
+            "word": "opensuse",
+            "score": 1.9575
+          },
+          {
+            "word": "wrote",
+            "score": 1.8768
+          },
+          {
+            "word": "contact us",
+            "score": 1.827
+          },
+          {
+            "word": "urladdr urladdr",
+            "score": 1.7717
+          },
+          {
+            "word": "spam",
+            "score": 1.6939
+          },
+          {
+            "word": "unsubscribe",
+            "score": 1.5885
+          },
+          {
+            "word": "via web",
+            "score": 1.5513
+          },
+          {
+            "word": "web urladdr",
+            "score": 1.5
+          },
+          {
+            "word": "lt",
+            "score": 1.445
+          },
+          {
+            "word": "urladdr emailaddr",
+            "score": 1.4078
+          },
+          {
+            "word": "uai",
+            "score": 1.4078
+          },
+          {
+            "word": "emails",
+            "score": 1.3679
+          },
+          {
+            "word": "number pm",
+            "score": 1.3622
+          },
+          {
+            "word": "fwd",
+            "score": 1.3446
+          },
+          {
+            "word": "emailaddr urladdr",
+            "score": 1.3369
+          },
+          {
+            "word": "gnc",
+            "score": 1.3341
+          }
+        ]
+      }
+    }
+  },
+  "dataset_sources": [
+    "CEAS_08",
+    "UCI_SMS"
+  ],
+  "evaluation": "80/20 stratified by source and label, after normalized-text deduplication"
+}

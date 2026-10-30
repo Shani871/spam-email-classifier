@@ -1,0 +1,30 @@
+id,language,ground_truth,scenario_type,assessment,score,latency_ms
+eng-legit-01,English,legitimate,routine_legitimate,No strong warning found,0,2.532083002733998
+eng-legit-02-urgent,English,legitimate,urgent_genuine,Needs verification,10,2.571749995695427
+eng-legit-03-urgent,English,legitimate,urgent_genuine,No strong warning found,0,2.6185830065514892
+eng-legit-04-job,English,legitimate,routine_legitimate,Needs verification,0,2.627583991852589
+eng-legit-05-invoice,English,legitimate,routine_legitimate,Needs verification,11,2.5324590096715838
+eng-scam-01-job,English,scam,recruitment_fee_scam,Needs verification,68,2.771708997897804
+eng-scam-02-invoice,English,scam,invoice_redirection_scam,Needs verification,34,2.773041996988468
+eng-scam-03-phish,English,scam,phishing_credential_harvest,High risk,100,2.636125005665235
+eng-scam-04-task,English,scam,task_investment_scam,Needs verification,65,2.561250003054738
+hin-legit-01,Hindi,legitimate,routine_legitimate,Unable to assess,28,2.483290998497978
+hin-legit-02-urgent,Hindi,legitimate,urgent_genuine,Unable to assess,22,0.38912500895094126
+hin-scam-01-job,Hindi,scam,recruitment_fee_scam,High risk,78,2.534540995839052
+hin-scam-02-utility,Hindi,scam,utility_disconnection_scam,Needs verification,68,2.527749995351769
+hin-scam-03-kyc,Hindi,scam,phishing_credential_harvest,Needs verification,63,2.4733749887673184
+hng-legit-01,Hinglish,legitimate,routine_legitimate,No strong warning found,1,2.495916996849701
+hng-legit-02-urgent,Hinglish,legitimate,urgent_genuine,Needs verification,10,2.6260830054525286
+hng-scam-01-job,Hinglish,scam,recruitment_fee_scam,Needs verification,52,2.8891250112792477
+hng-scam-02-utility,Hinglish,scam,utility_disconnection_scam,Needs verification,66,2.5330830103484914
+hng-scam-03-otp,Hinglish,scam,phishing_credential_harvest,Needs verification,51,2.56979200639762
+hng-scam-04-task,Hinglish,scam,task_investment_scam,High risk,82,2.7025000017601997
+eng-legit-06-utility,English,legitimate,routine_legitimate,No strong warning found,25,2.789624995784834
+eng-legit-07-safety,English,legitimate,routine_legitimate,Needs verification,11,2.6104160060640424
+eng-scam-05-utility,English,scam,utility_disconnection_scam,Needs verification,65,2.5888339878292754
+hin-legit-03-utility,Hindi,legitimate,routine_legitimate,Unable to assess,42,2.5387089990545064
+hin-legit-04-safety,Hindi,legitimate,routine_legitimate,Unable to assess,28,2.4967500066850334
+hin-scam-04-challan,Hindi,scam,phishing_credential_harvest,High risk,89,2.450040992698632
+hng-legit-03-utility,Hinglish,legitimate,routine_legitimate,No strong warning found,23,2.594374993350357
+hng-legit-04-safety,Hinglish,legitimate,routine_legitimate,No strong warning found,4,2.5020829925779253
+hng-scam-05-bank-kyc,Hinglish,scam,phishing_credential_harvest,Needs verification,67,2.5655409990577027

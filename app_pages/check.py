@@ -60,40 +60,118 @@ if source == "Email file":
 elif source == "Connected inbox":
     from src.ui_shared import gmail_token
     from src.gmail_api import scan_gmail_with_oauth
-    from src.gmail_scanner import scan_gmail_inbox
+    from src.gmail_scanner import scan_gmail_inbox, verify_inbox_connection, resolve_imap_settings
     token = gmail_token()
     credentials = st.session_state.get("imap_credentials", {})
     if not token and not credentials:
-        st.info("Connect an inbox in Settings, or paste a message to check it privately.")
-        st.page_link("app_pages/settings.py", label="Connect an inbox", icon=":material/settings:")
+        st.info("No active inbox connection. Connect your email or try the demo mailbox to scan messages automatically.")
+        col_conn, col_demo = st.columns([1, 1])
+        with col_conn:
+            st.markdown("#### Connect Your Email")
+            with st.form("quick_inbox_connect"):
+                quick_email = st.text_input("Email address", placeholder="e.g. name@gmail.com or user@outlook.com")
+                quick_pwd = st.text_input("App Password", type="password", placeholder="16-character App Password")
+                quick_submit = st.form_submit_button("Test & Connect", type="primary", width="stretch")
+            if quick_submit:
+                if not quick_email.strip() or not quick_pwd.strip():
+                    st.warning("Enter both your email and App Password.")
+                else:
+                    with st.spinner("Connecting to mail server…"):
+                        res = verify_inbox_connection(quick_email.strip(), quick_pwd.strip())
+                    if res["success"]:
+                        st.session_state["imap_credentials"] = {
+                            "email_address": quick_email.strip(),
+                            "app_password": quick_pwd.strip(),
+                            "provider": res["provider"]
+                        }
+                        st.session_state["inbox_provider_name"] = res["provider"]
+                        st.session_state.messages = []
+                        st.success(res["message"])
+                        st.rerun()
+                    else:
+                        st.error(res["message"])
+                        if res.get("troubleshooting"):
+                            st.info(res["troubleshooting"])
+            st.page_link("app_pages/settings.py", label="Open advanced connection settings", icon=":material/settings:")
+        with col_demo:
+            st.markdown("#### Instant Demo Mailbox")
+            st.caption("Scan 5 pre-configured realistic threat and legitimate emails without entering your credentials.")
+            if st.button("Use Demo Mailbox (5 emails)", type="secondary", icon=":material/play_circle:", width="stretch"):
+                st.session_state["imap_credentials"] = {
+                    "email_address": "demo@spamguard.local",
+                    "app_password": "demo",
+                    "provider": "SpamGuard Demo Feed"
+                }
+                st.session_state["inbox_provider_name"] = "SpamGuard Demo Feed"
+                st.session_state.messages = []
+                st.success("Connected to SpamGuard Demo Mailbox!")
+                st.rerun()
     else:
+        connected_email = credentials.get("email_address") or (st.user.get("email") if token else "Connected Email")
+        provider_name = credentials.get("provider") or st.session_state.get("inbox_provider_name") or ("Google Gmail (OAuth)" if token else "IMAP Mailbox")
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;'
+            f'background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:12px;">'
+            f'<div><span style="font-weight:600;color:#15803D;">● Connected:</span> {connected_email} '
+            f'<span style="font-size:12px;color:#4B5563;">({provider_name})</span></div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
         with st.form("inbox_scan"):
-            count = st.slider("Messages to check", 5, 25, 10, 5)
-            unread = st.checkbox("Only unread messages")
-            submitted = st.form_submit_button("Read recent messages", type="primary")
+            scan_col1, scan_col2, scan_col3 = st.columns([1, 1, 1])
+            with scan_col1:
+                count = st.slider("Messages to check", 5, 25, 10, 5)
+            with scan_col2:
+                folder = st.selectbox("Folder", ["INBOX", "[Gmail]/Spam", "Spam", "Junk"], index=0)
+            with scan_col3:
+                unread = st.checkbox("Only unread messages", value=False)
+            submitted = st.form_submit_button("Read recent messages", type="primary", width="stretch")
         if submitted:
             try:
-                with st.spinner("Reading recent messages…"):
-                    messages = scan_gmail_with_oauth(token, count, unread, "svm") if token else scan_gmail_inbox(**credentials, max_emails=count, only_unread=unread, model_type="svm")
+                with st.spinner("Reading and classifying messages…"):
+                    if token:
+                        messages = scan_gmail_with_oauth(token, count, unread, "svm")
+                    else:
+                        messages = scan_gmail_inbox(
+                            email_address=credentials["email_address"],
+                            app_password=credentials["app_password"],
+                            folder=folder,
+                            max_emails=count,
+                            only_unread=unread,
+                            model_type="svm",
+                            imap_host=credentials.get("imap_host", ""),
+                            imap_port=credentials.get("imap_port", 993)
+                        )
                 st.session_state["messages"] = messages
                 if not messages:
-                    st.info("No messages matched this scan.")
-            except (PermissionError, ValueError, ConnectionError, RuntimeError, OSError):
+                    st.info(f"No messages found matching this scan in '{folder}'.")
+            except Exception as err:
                 st.session_state["messages"] = []
-                st.error("The inbox could not be read. Reconnect in Settings and check that Gmail access is permitted.")
-        messages = st.session_state["messages"]
+                st.error(f"Inbox scan error: {err}")
+                st.info("Try reconnecting in Settings or checking your App Password permissions.")
+        messages = st.session_state.get("messages", [])
         if messages:
-            chosen = st.selectbox("Choose a message", range(len(messages)), format_func=lambda i: f"{messages[i]['subject']} · {messages[i]['sender']}")
+            st.markdown(f"**Found {len(messages)} messages:**")
+            def format_msg(i):
+                m = messages[i]
+                tag = "🚨 SPAM" if m.get("is_spam") else "✅ CLEAN"
+                return f"{tag} · {m['subject']} · {m['sender']}"
+            chosen = st.selectbox("Choose a message to examine", range(len(messages)), format_func=format_msg)
             message = messages[chosen]
-            st.text(message["body_preview"])
-            if st.button("Check this message", type="primary", icon=":material/search:"):
+            with st.container(border=True):
+                st.markdown(f"**Subject:** {message['subject']}")
+                st.markdown(f"**From:** `{message['sender']}` · **Date:** {message['date']}")
+                if message.get("attachments"):
+                    st.caption(f"📎 Attachments ({len(message['attachments'])}): {', '.join(a.get('filename', '') for a in message['attachments'])}")
+                st.text_area("Body preview", message["body_preview"], height=100, disabled=True)
+            if st.button("Check this message in depth", type="primary", icon=":material/search:", width="stretch"):
                 try:
-                    with st.spinner("Checking the message and its evidence…"):
+                    with st.spinner("Running security analysis & forensics…"):
                         analyze(message["full_text"], sender=message["sender"], headers=message.get("headers"), attachments=message.get("attachments"))
                     st.session_state["selected_message"] = dict(message)
                     st.switch_page("app_pages/understand.py")
-                except (FileNotFoundError, ValueError):
-                    st.error("The check could not be completed. Check the model setup in Advanced.")
+                except (FileNotFoundError, ValueError) as e:
+                    st.error(f"The check could not be completed: {e}")
 else:
     st.session_state.setdefault("message_input", st.session_state.get("draft_text", ""))
     if source == "Screenshot or QR":
@@ -129,7 +207,7 @@ else:
             }
             for _col, (_label, _text) in zip([_ex_col1, _ex_col2, _ex_col3], _EXAMPLES.items()):
                 with _col:
-                    if st.button(_label, use_container_width=True, key=f"ex_{_label}"):
+                    if st.button(_label, width="stretch", key=f"ex_{_label}"):
                         st.session_state["message_input"] = _text
                         st.rerun()
     with st.form("message_check", border=True):

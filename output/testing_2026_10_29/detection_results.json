@@ -1,0 +1,124 @@
+{
+  "benchmark_type": "Realistic modern threat & genuine message evaluation",
+  "synthetic_notice": "All test samples are realistic synthetic scenarios based on FTC, CERT-In, and observed fraud patterns. Avoid claiming real-world accuracy from this small benchmark.",
+  "evaluation_independence_disclosure": "This benchmark is kept separate from the historical model training set (data/spam.csv). Heuristic rules were tuned against common observed patterns; specific test scenarios are disclosed in data/detection_evaluation_set.json.",
+  "total_samples": 29,
+  "total_scams": 14,
+  "scams_detected": 14,
+  "missed_scams_count": 0,
+  "detection_rate": 1.0,
+  "total_legit": 15,
+  "false_warnings_count": 5,
+  "high_risk_false_alarms_count": 0,
+  "unable_to_assess_count": 4,
+  "false_warning_rate": 0.3333,
+  "urgent_genuine_breakdown": {
+    "total": 4,
+    "cleared_without_high_risk": 4,
+    "flagged_high_risk": 0
+  },
+  "by_language": {
+    "English": {
+      "total": 12,
+      "scams": 5,
+      "scams_detected": 5,
+      "missed_scams": 0,
+      "legit": 7,
+      "false_warnings": 4,
+      "high_risk_false_alarms": 0,
+      "unable_to_assess": 0
+    },
+    "Hindi": {
+      "total": 8,
+      "scams": 4,
+      "scams_detected": 4,
+      "missed_scams": 0,
+      "legit": 4,
+      "false_warnings": 0,
+      "high_risk_false_alarms": 0,
+      "unable_to_assess": 4
+    },
+    "Hinglish": {
+      "total": 9,
+      "scams": 5,
+      "scams_detected": 5,
+      "missed_scams": 0,
+      "legit": 4,
+      "false_warnings": 1,
+      "high_risk_false_alarms": 0,
+      "unable_to_assess": 0
+    }
+  },
+  "historical_classifier_comparison": {
+    "description": "Historical ML Classifier (Naive Bayes / SVM) evaluated on the same modern scenarios without heuristic / threat intelligence layer.",
+    "scams_detected": 10,
+    "missed_scams": 4,
+    "detection_rate": 0.7143,
+    "false_warnings": 5,
+    "why_different": "Historical spam classifiers trained on 2000s Enron/SpamAssassin datasets look for bulk marketing keywords. Modern scams (targeted spear phishing, payment redirection, advance fee recruitment) often lack spam keywords and are frequently missed by classical ML alone."
+  },
+  "false_warnings": [
+    {
+      "id": "eng-legit-02-urgent",
+      "language": "English",
+      "scenario": "urgent_genuine",
+      "severity": "NEEDS_VERIFICATION_FALSE_WARNING",
+      "text": "URGENT ACTION REQUIRED: The production database failover test begins at 18:00 UTC today. Please ensure all non-essential batch jobs are paused prior to the maintenance window. Contact DevOps on Slack #infra-alerts for questions.",
+      "assessment": "Needs verification",
+      "score": 10,
+      "evidence_titles": [
+        "Time pressure language"
+      ],
+      "notes": "Urgent wording with deadline, but legitimate operational alert without requests for credentials or payments."
+    },
+    {
+      "id": "eng-legit-04-job",
+      "language": "English",
+      "scenario": "routine_legitimate",
+      "severity": "NEEDS_VERIFICATION_FALSE_WARNING",
+      "text": "Dear Alex, thank you for interviewing for the Software Engineer position at Stripe. We enjoyed discussing your distributed systems experience. Our hiring committee will review feedback and follow up by Friday. Note that Stripe never charges any application or processing fees.",
+      "assessment": "Needs verification",
+      "score": 0,
+      "evidence_titles": [],
+      "notes": "Authentic job correspondence explicitly disclaiming fees."
+    },
+    {
+      "id": "eng-legit-05-invoice",
+      "language": "English",
+      "scenario": "routine_legitimate",
+      "severity": "NEEDS_VERIFICATION_FALSE_WARNING",
+      "text": "Please find attached invoice INV-2024-889 for monthly cloud hosting services per our agreement. Payment terms are net-30 days to our established bank account ending in 4102.",
+      "assessment": "Needs verification",
+      "score": 11,
+      "evidence_titles": [],
+      "notes": "Routine invoice referencing existing terms and known account ending."
+    },
+    {
+      "id": "hng-legit-02-urgent",
+      "language": "Hinglish",
+      "scenario": "urgent_genuine",
+      "severity": "NEEDS_VERIFICATION_FALSE_WARNING",
+      "text": "Urgent reminder: Kal tax investment declaration submit karne ki last date hai. HR portal par receipts upload kar dein warna TDS deduct ho jayega. Kisi third party ko details na dein.",
+      "assessment": "Needs verification",
+      "score": 10,
+      "evidence_titles": [
+        "Time pressure language"
+      ],
+      "notes": "Urgent deadline reminder directing to official portal."
+    },
+    {
+      "id": "eng-legit-07-safety",
+      "language": "English",
+      "scenario": "routine_legitimate",
+      "severity": "NEEDS_VERIFICATION_FALSE_WARNING",
+      "text": "Storm Safety Advisory: Strong winds are forecast for the metro region tonight. Please stay clear of downed power lines and report outages immediately to our 24/7 emergency dispatch at 1-800-555-POWER. Never approach fallen wires.",
+      "assessment": "Needs verification",
+      "score": 11,
+      "evidence_titles": [
+        "Time pressure language"
+      ],
+      "notes": "Legitimate storm safety reminder without requests for money or personal credentials."
+    }
+  ],
+  "missed_scams": []
+}

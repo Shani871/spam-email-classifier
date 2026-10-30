@@ -124,14 +124,56 @@ def test_app_pages_importable():
     import types
 
     # Stub streamlit so page modules can be imported without a live server
+    class MockContext:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    class MockSessionState(dict):
+        def setdefault(self, k, default=None):
+            if k not in self:
+                self[k] = default
+            return self[k]
+        def __getattr__(self, name):
+            return self.get(name)
+        def __setattr__(self, name, value):
+            self[name] = value
+
+    class StreamlitStop(BaseException):
+        pass
+
     st_stub = types.ModuleType("streamlit")
-    for attr in ("caption", "title", "subheader", "selectbox", "markdown", "container",
-                 "link_button", "session_state", "button", "checkbox", "text_area",
-                 "text_input", "form", "form_submit_button", "radio", "expander",
-                 "page_link", "success", "error", "info", "spinner", "dataframe",
-                 "slider", "text", "columns", "switch_page", "stop"):
+    st_stub.session_state = MockSessionState({
+        "result": {"assessment": "High risk", "summary": "Test summary", "score": 85, "category": "General message", "evidence": [], "limitations": []},
+        "language": "English",
+        "checked_text": "sample text",
+        "save_history": False,
+        "retention_days": 7,
+        "messages": [],
+        "selected_message": None,
+        "actions": [],
+        "worker": None,
+        "gmail_disconnected": False,
+    })
+    st_stub.user = {"is_logged_in": False, "get": lambda k, d=None: False if k == "is_logged_in" else d}
+    st_stub.secrets = {}
+    st_stub.stop = lambda: (_ for _ in ()).throw(StreamlitStop())
+    st_stub.segmented_control = lambda *a, **kw: "Paste text"
+    st_stub.badge = lambda *a, **kw: None
+    st_stub.toggle = lambda *a, **kw: False
+    st_stub.container = lambda *a, **kw: MockContext()
+    st_stub.form = lambda *a, **kw: MockContext()
+    st_stub.expander = lambda *a, **kw: MockContext()
+    st_stub.spinner = lambda *a, **kw: MockContext()
+    st_stub.tabs = lambda t, *a, **kw: [MockContext() for _ in range(len(t) if hasattr(t, '__len__') else 3)]
+    st_stub.columns = lambda n, *a, **kw: [MockContext() for _ in range(n if isinstance(n, int) else len(n))]
+    for attr in ("caption", "title", "subheader", "selectbox", "markdown",
+                 "link_button", "button", "checkbox", "text_area",
+                 "text_input", "form_submit_button", "radio",
+                 "page_link", "success", "error", "info", "dataframe",
+                 "slider", "text", "switch_page", "warning", "rerun", "code", "image", "json", "download_button", "number_input", "progress", "logo"):
         setattr(st_stub, attr, lambda *a, **kw: None)
-    st_stub.session_state = {}
 
     import pathlib
     pages_dir = pathlib.Path(__file__).parent.parent / "app_pages"
@@ -142,6 +184,8 @@ def test_app_pages_importable():
         sys.modules["streamlit"] = st_stub
         try:
             importlib.import_module(module_name)
+        except (StreamlitStop, SystemExit):
+            pass
         except Exception as exc:
             failures.append(f"{path.name}: {exc}")
         finally:

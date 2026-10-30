@@ -56,7 +56,8 @@ def extract_urls(text: str) -> List[Dict[str, str]]:
     or bare URLs from plain text.
     """
     from src.email_content import html_details
-    results = html_details(text)["links"] if "<" in text else []
+    raw_links = html_details(text)["links"] if "<" in text else []
+    results = [l for l in raw_links if not l.get("url", "").lower().startswith(("data:", "javascript:", "mailto:", "tel:"))]
     seen = {item["url"] for item in results}
 
     # 1. Check for HTML anchor tags: <a href="URL">ANCHOR_TEXT</a>

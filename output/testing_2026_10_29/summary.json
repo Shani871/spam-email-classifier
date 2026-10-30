@@ -1,0 +1,15 @@
+{
+  "automated_tests": 143,
+  "passed": 143,
+  "failed": 0,
+  "synthetic_samples": 29,
+  "true_negative": 10,
+  "false_positive": 5,
+  "false_negative": 0,
+  "true_positive": 14,
+  "accuracy": 0.8275862068965517,
+  "precision": 0.7368421052631579,
+  "recall": 1.0,
+  "f1": 0.8484848484848484,
+  "median_latency_ms": 2.5655409990577027
+}

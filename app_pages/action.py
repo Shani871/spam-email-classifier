@@ -8,14 +8,16 @@ step_tracker(3)
 st.title("Choose your next step")
 result = result_required()
 assessment_card(result)
-st.subheader("What happened so far?")
-stage = st.selectbox("Your situation", ["Only received the message", "Clicked a link", "Shared a password or OTP", "Sent money or payment details"])
-for index, step in enumerate(recovery_steps(stage, st.session_state.language), 1):
-    st.markdown(f"{index}. {step}")
+st.subheader("Incident Containment & Recovery")
+stage = st.selectbox("Select your current situation", ["Only received the message", "Clicked a link", "Shared a password or OTP", "Sent money or payment details"])
+with st.container(border=True):
+    st.markdown("#### :material/security: Recommended Containment Actions")
+    for index, step in enumerate(recovery_steps(stage, st.session_state.language), 1):
+        st.markdown(f"**{index}.** {step}")
 with st.container(horizontal=True):
-    st.link_button("India: report cybercrime", "https://cybercrime.gov.in/")
-    st.link_button("Recovery guidance (FTC)", "https://consumer.ftc.gov/articles/what-do-if-you-were-scammed")
-st.caption("Region-specific: cybercrime.gov.in and helpline 1930 are India-only. Outside India, contact your national cybercrime authority or local police.")
+    st.link_button("India: Report Cybercrime (1930 / cybercrime.gov.in)", "https://cybercrime.gov.in/", icon=":material/gavel:")
+    st.link_button("USA: Report Scam (FTC / reportfraud.ftc.gov)", "https://consumer.ftc.gov/articles/what-do-if-you-were-scammed", icon=":material/policy:")
+st.caption("Region-specific: cybercrime.gov.in and helpline 1930 are India-only. In other countries, report to your national cybercrime authority or local police.")
 
 message = st.session_state.get("selected_message")
 if message and message.get("provider") == "gmail" and gmail_token():

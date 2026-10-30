@@ -65,6 +65,7 @@ def result_required():
         st.info("Check a message first. Your assessment and next steps will appear here.", icon=":material/info:")
         st.page_link("app_pages/check.py", label="Check a message", icon=":material/search:")
         st.stop()
+        raise SystemExit(0)
     return result
 
 
@@ -96,7 +97,14 @@ def assessment_card(result):
         icon, color, status_descriptor = descriptors.get(language, descriptors["English"]).get(
             assessment_key, (":material/info:", "gray", assessment_key)
         )
-        st.badge(f"{title} — {status_descriptor}", icon=icon, color=color)
+        col_badge, col_score = st.columns([3, 1])
+        with col_badge:
+            st.badge(f"{title} — {status_descriptor}", icon=icon, color=color)
+        with col_score:
+            if result.get("score") is not None:
+                st.markdown(f'<div style="text-align:right;font-weight:700;font-size:14px;color:#475569;">Risk Score: <span style="color:#0F172A;">{result["score"]}/100</span></div>', unsafe_allow_html=True)
+        if result.get("score") is not None:
+            st.progress(min(1.0, max(0.0, float(result["score"]) / 100.0)))
         localized_summary = result.get("localized_summaries", {}).get(language, result["summary"])
         st.subheader(localized_summary)
         if result["score"] is not None:

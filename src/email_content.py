@@ -23,7 +23,8 @@ class LinkParser(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == "a" and self.active is not None:
-            if self.active["url"]:
+            url = (self.active.get("url") or "").strip()
+            if url and not url.lower().startswith(("data:", "javascript:", "mailto:", "tel:")):
                 self.links.append(self.active)
             self.active = None
 

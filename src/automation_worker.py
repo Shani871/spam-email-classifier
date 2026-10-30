@@ -74,7 +74,8 @@ class InboxAutomationWorker:
         email_address: str = "",
         app_password: str = "",
         model_type: str = "svm",
-        user_id: str = "local"
+        user_id: str = "local",
+        **kwargs
     ):
         self.user_id = user_id
 
@@ -82,6 +83,10 @@ class InboxAutomationWorker:
         self.email_address = email_address
         self.app_password = app_password
         self.model_type = model_type
+        self.imap_host = kwargs.get("imap_host", "")
+        self.imap_port = kwargs.get("imap_port", 993)
+        self.folder = kwargs.get("folder", "INBOX")
+        self.provider = kwargs.get("provider", "")
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -117,11 +122,15 @@ class InboxAutomationWorker:
     def _save_state(self):
         pass
 
-    def configure_credentials(self, email_address: str, app_password: str):
+    def configure_credentials(self, email_address: str = "", app_password: str = "", **kwargs):
         with self._worker_lock:
             self.processed_ids.clear()
-            self.email_address = email_address.strip()
-            self.app_password = app_password.strip()
+            self.email_address = (email_address or "").strip()
+            self.app_password = (app_password or "").strip()
+            self.imap_host = kwargs.get("imap_host", getattr(self, "imap_host", ""))
+            self.imap_port = kwargs.get("imap_port", getattr(self, "imap_port", 993))
+            self.folder = kwargs.get("folder", getattr(self, "folder", "INBOX"))
+            self.provider = kwargs.get("provider", getattr(self, "provider", ""))
 
     def set_interval(self, seconds: int):
         with self._worker_lock:
@@ -161,13 +170,16 @@ class InboxAutomationWorker:
                 emails = scan_gmail_inbox(
                     email_address=self.email_address,
                     app_password=self.app_password,
+                    folder=getattr(self, "folder", "INBOX"),
                     max_emails=5,
                     only_unread=True,
-                    model_type=self.model_type
+                    model_type=self.model_type,
+                    imap_host=getattr(self, "imap_host", ""),
+                    imap_port=getattr(self, "imap_port", 993)
                 )
                 return emails
             except Exception as e:
-                print(f"[Worker Live Gmail Error] {e}")
+                print(f"[Worker Live IMAP Error] {e}")
                 return []
         else:
             # Simulate an incoming email from the test pool
