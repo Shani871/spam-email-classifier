@@ -58,7 +58,9 @@ if source == "Email file":
         except FileNotFoundError:
             st.error("The model is unavailable. Check the setup instructions in Advanced.")
 elif source == "Connected inbox":
-    from src.ui_shared import gmail_token
+    from html import escape
+    from src.ui_shared import gmail_token, connect_inbox, md_escape
+    from src.rate_limit import enforce
     from src.gmail_api import scan_gmail_with_oauth
     from src.gmail_scanner import scan_gmail_inbox, verify_inbox_connection, resolve_imap_settings
     token = gmail_token()
@@ -77,7 +79,7 @@ elif source == "Connected inbox":
                     st.warning("Enter both your email and App Password.")
                 else:
                     with st.spinner("Connecting to mail server…"):
-                        res = verify_inbox_connection(quick_email.strip(), quick_pwd.strip())
+                        res = connect_inbox(quick_email.strip(), quick_pwd.strip())
                     if res["success"]:
                         st.session_state["imap_credentials"] = {
                             "email_address": quick_email.strip(),
@@ -112,8 +114,8 @@ elif source == "Connected inbox":
         st.markdown(
             f'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;'
             f'background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:12px;">'
-            f'<div><span style="font-weight:600;color:#15803D;">● Connected:</span> {connected_email} '
-            f'<span style="font-size:12px;color:#4B5563;">({provider_name})</span></div>'
+            f'<div><span style="font-weight:600;color:#15803D;">● Connected:</span> {escape(str(connected_email))} '
+            f'<span style="font-size:12px;color:#4B5563;">({escape(str(provider_name))})</span></div>'
             f'</div>',
             unsafe_allow_html=True
         )
@@ -128,6 +130,7 @@ elif source == "Connected inbox":
             submitted = st.form_submit_button("Read recent messages", type="primary", width="stretch")
         if submitted:
             try:
+                enforce("inbox_scan", st.session_state.get("identity", ""))
                 with st.spinner("Reading and classifying messages…"):
                     if token:
                         messages = scan_gmail_with_oauth(token, count, unread, "svm")
@@ -152,17 +155,20 @@ elif source == "Connected inbox":
         messages = st.session_state.get("messages", [])
         if messages:
             st.markdown(f"**Found {len(messages)} messages:**")
+            from src.scam_assistant import inbox_triage, INBOX_TAGS
+            for m in messages:
+                if "assessment" not in m:
+                    m["assessment"] = inbox_triage(m)
             def format_msg(i):
                 m = messages[i]
-                tag = "🚨 SPAM" if m.get("is_spam") else "✅ CLEAN"
-                return f"{tag} · {m['subject']} · {m['sender']}"
+                return f"{INBOX_TAGS[m['assessment']]} · {m['subject']} · {m['sender']}"
             chosen = st.selectbox("Choose a message to examine", range(len(messages)), format_func=format_msg)
             message = messages[chosen]
             with st.container(border=True):
-                st.markdown(f"**Subject:** {message['subject']}")
-                st.markdown(f"**From:** `{message['sender']}` · **Date:** {message['date']}")
+                st.markdown(f"**Subject:** {md_escape(message['subject'])}")
+                st.markdown(f"**From:** {md_escape(message['sender'])} · **Date:** {md_escape(message['date'])}")
                 if message.get("attachments"):
-                    st.caption(f"📎 Attachments ({len(message['attachments'])}): {', '.join(a.get('filename', '') for a in message['attachments'])}")
+                    st.caption(f"📎 Attachments ({len(message['attachments'])}): {', '.join(md_escape(a.get('filename', '')) for a in message['attachments'])}")
                 st.text_area("Body preview", message["body_preview"], height=100, disabled=True)
             if st.button("Check this message in depth", type="primary", icon=":material/search:", width="stretch"):
                 try:

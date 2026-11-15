@@ -15,8 +15,6 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-RULES_FILE = os.path.join(DATA_DIR, "sender_rules.json")
 
 
 from src.user_storage import read_json, write_json
@@ -169,7 +167,8 @@ def execute_quarantine_imap(
         return {"success": False, "message": "Rescan this message before moving it; a stable mailbox identifier is required."}
     mail = None
     try:
-        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        from src.gmail_scanner import open_imap_connection
+        mail = open_imap_connection("imap.gmail.com", 993)
         mail.login(clean_email, clean_pwd)
         status, _ = mail.select(source_folder)
         if status != "OK":

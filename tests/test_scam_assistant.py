@@ -85,3 +85,35 @@ def test_imap_uses_uid_and_does_not_mark_read(monkeypatch):
 def test_recovery_guidance_for_money(language):
     steps = recovery_steps("Sent money or payment details", language)
     assert len(steps) >= 3
+
+
+def test_inbox_triage_does_not_call_a_model_only_hit_high_risk(monkeypatch):
+    """A confident classifier verdict alone must not label a plain support reply as high risk."""
+    from src import ai_threat_intelligence
+    from src.scam_assistant import inbox_triage, INBOX_TAGS
+
+    def confident_spam(text, model_type="svm"):
+        return {"assessable": True, "label": "Spam", "is_spam": True, "confidence": 0.97, "prob_spam": 0.97,
+                "prob_ham": 0.03, "model_type": model_type, "cleaned_text": text, "key_features": []}
+
+    monkeypatch.setattr(ai_threat_intelligence, "predict_email", confident_spam)
+    message = {
+        "full_text": "Subject: Re: Delete chat history\n\nHi, you can remove a conversation from the menu next to its name. Let us know if you have other questions.",
+        "sender": '"Support" <support@mail.example.com>',
+        "headers": {"From": '"Support" <support@mail.example.com>',
+                    "Authentication-Results": "spf=pass dkim=pass dmarc=pass"},
+        "attachments": [],
+    }
+    assessment = inbox_triage(message)
+    assert assessment == "Needs verification"
+    assert "SPAM" not in INBOX_TAGS[assessment]
+
+
+def test_inbox_triage_flags_combined_warning_signs():
+    from src.scam_assistant import inbox_triage
+    message = {
+        "full_text": "Subject: URGENT account suspended\n\nYour PayPal account will be suspended within 24 hours. "
+                     "Verify immediately at http://paypa1-security-update.com/login or lose access.",
+        "sender": "service@paypa1-security-update.com", "headers": {}, "attachments": [],
+    }
+    assert inbox_triage(message) == "High risk"

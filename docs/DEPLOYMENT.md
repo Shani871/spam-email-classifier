@@ -1,117 +1,133 @@
-# SpamGuard AI: Public Deployment Guide & Requirements
+# Deployment and maintenance
 
-This document outlines the architecture, security practices, configuration, and remaining blockers for deploying SpamGuard AI to a public or production environment.
+This describes the single-server deployment shipped in this repository: the app in a container, Caddy in front for HTTPS, and one volume for all state. Status of each part is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md); in particular, the container image has not been built yet (see "Verification status" below).
 
----
+## Architecture
 
-## 1. Production Architecture Overview
-
-SpamGuard AI is designed as a privacy-preserving email and message risk assessment platform.
-- **Processing Model**: All checks run locally on the app server process. No user inbox content or email text is dispatched to external proprietary LLMs by default.
-- **Process Isolation**: Each user session has isolated memory. Persistent storage is scoped by cryptographic user identifiers (`sha256(identity)`).
-- **Storage Tier**: Persistent disk volume mounting `/data` and `/models`.
-
-### Recommended Host Configuration
-- **Runtime**: Linux (Ubuntu 22.04 LTS or Debian 12) with Python 3.10 - 3.12.
-- **Memory**: Minimum 2 GB RAM (4 GB recommended for scikit-learn model retraining and OCR).
-- **Disk**: Persistent volume with at least 10 GB free space for model releases and backups.
-- **OCR Dependencies (Optional for Screenshot/QR)**:
-  ```bash
-  apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-hin libgl1-mesa-glx
-  ```
-
----
-
-## 2. Secrets and Credential Security
-
-1. **No Credentials in Source Code or URLs**:
-   - `secrets.toml` is strictly ignored in `.gitignore`.
-   - Never log OAuth tokens, app passwords, or full email bodies.
-   - Any token-bearing query parameters (such as legacy redirects) are purged automatically on entry in `app.py`.
-2. **Injecting Secrets**:
-   Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` or set environment variables:
-   ```toml
-   [auth]
-   redirect_uri = "https://your-domain.com/oauth2callback"
-   cookie_secret = "GENERATE_64_CHAR_RANDOM_HEX_SECRET"
-   expose_tokens = ["access"]
-
-   [auth.google]
-   client_id = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
-   client_secret = "YOUR_GOOGLE_CLIENT_SECRET"
-   server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
-   client_kwargs = { scope = "openid email profile https://www.googleapis.com/auth/gmail.readonly", prompt = "consent select_account" }
-
-   [app]
-   admin_emails = ["security-admin@your-domain.com"]
-   ```
-
----
-
-## 3. Storage Isolation & Multi-Process Controls
-
-1. **Transactional File Storage & Cross-Process Locking**:
-   - State mutations in `src/user_storage.py` write to a temporary file (`tempfile.mkstemp`) before performing an atomic POSIX `os.replace`.
-   - Thread safety is guarded by `threading.RLock()`, and concurrent multi-process safety is guarded by advisory cross-process file locks (`fcntl.flock`).
-2. **Coordinated Model Release Controls**:
-   - Model candidates trained from reviewed feedback use non-blocking cross-process file-locking (`.release.lock`) and atomic manifest swapping (`active.json`).
-   - If an evaluation regresses on precision or recall compared to baseline, the candidate is safely rejected and the active version remains unmodified.
-3. **Automated Retention, Backups, and Restore Behavior**:
-   - History summaries expire after 1, 7, or 30 days (configured by the user).
-   - Saved corrections expire after 30 days.
-   - Backups are stored in `data/backups/` with strict directory permissions (`0700`), retaining the last 7 archives.
-   - **Restoration & Account Deletion Tombstones**: When an account is deleted, a tombstone is recorded in `data/users/.deleted_accounts.json`. Restoring a backup archive (`restore_backup_archive()`) automatically purges any restored accounts that match the tombstone list, guaranteeing that disaster-recovery restores never resurrect user data deleted by individuals.
-   - Configure a daily cron job to run the backup and retention script:
-     ```cron
-     0 2 * * * /opt/spamguard/.venv/bin/python /opt/spamguard/scripts/backup_and_retention.py >> /var/log/spamguard_backup.log 2>&1
-     ```
-
----
-
-## 4. Reverse Proxy and Network Hardening
-
-Deploy behind Nginx or Caddy with automated HTTPS (Let's Encrypt):
-
-### Caddyfile Example
-```caddy
-your-domain.com {
-    reverse_proxy localhost:8501 {
-        header_up Host {host}
-        header_up X-Real-IP {remote}
-        header_up X-Forwarded-Proto https
-    }
-
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        Referrer-Policy "strict-origin-when-cross-origin"
-    }
-}
+```
+Internet ──443──> Caddy (TLS, security headers, 12 MB body limit)
+                    └──> app:8501  Streamlit, non-root, one process
+                            └──> /var/lib/spamguard  (volume)
+                                   users/    account-scoped JSON, hashed directory names
+                                   logs/     scrubbed audit log, rotated at 5 MB
+                                   backups/  daily archives, last 7 kept
+                                   models/   baseline + released versions + active.json
+backup container: retention cleanup + archive every 24 h, same volume
 ```
 
----
+There is no database server. Account data is JSON files written atomically under file locks (`src/user_storage.py`). That is safe for one app container on one host. Do not run several app replicas or put the volume on a network share: rate limits and session state are per process, and file locks are not reliable across hosts. Moving to several nodes needs a real database first; that work is not done.
 
-## 5. Error Monitoring & Log Sanitization
+## First deployment
 
-`src/monitoring.py` automatically scrubs:
-- Bearer tokens and API keys (`[REDACTED_TOKEN]`)
-- Passwords and secret values (`[REDACTED]`)
-- Email addresses (`[EMAIL_MASKED]`)
-- Telephone numbers (`[PHONE_MASKED]`)
+Requirements: a Linux host with Docker Engine and the Compose plugin, 2 GB RAM, ports 80 and 443 open, and a DNS record for your domain pointing at the host.
 
-Logs are stored in `data/logs/security_audit.log` with strict directory permissions (`0700`).
+```sh
+git clone <repository-url> spamguard && cd spamguard
+cp .env.example .env
+```
 
----
+Edit `.env`:
 
-## 6. Public Deployment Blockers & Next Steps
-
-Before enabling public sign-ins for external Google users:
-
-| Area | Status | Requirement / Blocker |
+| Variable | Required | Purpose |
 |---|---|---|
-| **Google Cloud OAuth Verification** | **Pending** | Requesting restricted scopes (`gmail.readonly`, `gmail.modify`) requires CASA Tier 2 assessment and Google security verification. |
-| **Privacy Policy & Terms** | **Pending** | A public HTTPS URL with published Privacy Policy detailing message processing and 30-day retention limits is required by Google. |
-| **Domain Verification** | **Pending** | Google Search Console ownership verification for the production domain. |
-| **Live Gmail Mailbox Testing** | **Pending** | Live end-to-end testing with an authorized test account (mocked test suite currently passes all checks). |
-| **Encrypted Disk Volume** | **Required** | Production host must utilize Linux LUKS or cloud provider volume encryption at rest for `/data`. |
+| `DOMAIN` | yes | Public host name; Caddy obtains the certificate for it |
+| `ACME_EMAIL` | no | Let's Encrypt contact address |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for sign-in | Google OAuth client; leave both empty for guest-only mode |
+| `SPAMGUARD_COOKIE_SECRET` | with sign-in | Random, 32+ characters: `openssl rand -hex 32` |
+| `SPAMGUARD_ENABLE_GMAIL_ACTIONS` | no | `1` adds the optional move-to-spam permission |
+| `SPAMGUARD_ADMIN_EMAILS` | no | Verified Google accounts that may review feedback and release models |
+| `SPAMGUARD_IMAP_PORTS` | no | Ports allowed for custom IMAP servers (default `993`) |
+
+Then:
+
+```sh
+docker compose up -d --build
+docker compose ps          # app should become "healthy"
+curl -fsS https://$DOMAIN/_stcore/health
+```
+
+The container refuses to start if sign-in is half configured (missing secret, cookie secret under 32 characters, non-HTTPS public URL) or if `SPAMGUARD_LOCAL_ADMIN` is set.
+
+### Google sign-in
+
+In Google Cloud Console create an OAuth client (Web application), enable the Gmail API, and add `https://<DOMAIN>/oauth2callback` as an authorised redirect URI. Until Google has verified the app for the restricted Gmail scopes, only test users you list in the consent screen can connect an inbox. Verification, a published privacy policy and domain ownership are Google's requirements and cannot be completed from this repository.
+
+Without sign-in the app still works for pasted text, `.eml` files, screenshots and app-password IMAP; each browser session is a separate guest.
+
+## Secrets
+
+- Secrets come from `.env` on the host and are rendered into `~/.streamlit/secrets.toml` inside the container (mode 0600) at start-up. `.env` and `.streamlit/secrets.toml` are git-ignored.
+- To use a secret store instead, mount a ready `secrets.toml` at `/app/.streamlit/secrets.toml`; the entrypoint then leaves it alone.
+- App passwords typed for IMAP are held in server memory for the session only and are never written to disk or logs.
+
+## Security controls in place
+
+| Control | Where |
+|---|---|
+| HTTPS, HSTS, nosniff, frame and referrer policy | `deploy/Caddyfile` |
+| Non-root user, no added capabilities, no-new-privileges | `Dockerfile`, `docker-compose.yml` |
+| XSRF protection on, usage statistics off, tracebacks hidden in production | `.streamlit/config.toml`, `Dockerfile` |
+| Rate limits per client: checks 30/min, inbox scans 10/min, batch 3 per 5 min, mailbox connection attempts 5 per 5 min, and 8 per 15 min per target mailbox | `src/rate_limit.py` |
+| IMAP over TLS with certificate verification and a 15 s timeout | `src/gmail_scanner.py` |
+| Custom IMAP servers must resolve to public addresses on an allowed port | `validate_imap_endpoint` |
+| Email subjects, senders and link text escaped before display | `md_escape`, `html.escape` |
+| Admin functions require a verified Google account on the admin list | `src/ui_shared.py`, `src/active_learning.py` |
+| Logs scrub tokens, passwords, email addresses and phone numbers; no message bodies | `src/monitoring.py` |
+
+Rate limits are in memory: they reset on restart and assume the app is reachable only through Caddy (`SPAMGUARD_TRUST_PROXY=1`). Do not publish port 8501 directly.
+
+Not covered: there is no web application firewall, no malware scanning of attachments, and the IMAP host check resolves the name before connecting rather than pinning the address.
+
+## Health and monitoring
+
+- Liveness: `GET /_stcore/health` returns `ok`. The image has a Docker `HEALTHCHECK`, and Caddy starts only after the app is healthy.
+- Logs: `docker compose logs -f app` for the server; `/var/lib/spamguard/logs/security_audit.log` for audit events (JSON lines, 14-day retention).
+- There is no metrics endpoint or alerting. Point an external uptime monitor at the health URL.
+
+## Backups and restore
+
+The `backup` service runs `scripts/backup_and_retention.py` once a day: it deletes expired history and feedback, then writes `backups/spamguard_backup_<timestamp>.tar.gz` and keeps the last seven. Archives contain account data only; released model versions are on the same volume but not inside the archives.
+
+Copy archives off the host; a backup on the same disk does not survive losing the disk:
+
+```sh
+docker compose cp backup:/var/lib/spamguard/backups ./offsite-backups
+```
+
+Restore (accounts deleted since the backup stay deleted, via tombstones):
+
+```sh
+docker compose stop app
+docker compose run --rm backup python -c "from pathlib import Path; from scripts.backup_and_retention import restore_backup_archive; restore_backup_archive(Path('/var/lib/spamguard/backups/<file>.tar.gz'))"
+docker compose start app
+```
+
+To capture everything including models, snapshot the `spamguard_state` volume. Encrypt the host disk or volume at rest; the app does not encrypt its files.
+
+## Updating
+
+```sh
+git pull
+docker compose up -d --build
+```
+
+The baseline model in the image replaces the baseline on the volume at every start. A model released from the admin page (`models/active.json`) stays active across updates; use "Roll back the last model release" on the Advanced page to return to the previous one.
+
+## Retraining
+
+- From reviewed feedback: Advanced > Feedback and training (admin). A candidate is released only if spam precision and recall do not drop by more than 0.005 on a fixed hold-out.
+- From scratch: `python scripts/model_selection.py` then `python src/train.py` on a development machine, commit `models/`, redeploy. See [MODEL_CARD.md](MODEL_CARD.md).
+
+## Running without Docker
+
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-lock.txt
+.venv/bin/python -m streamlit run app.py --server.address 127.0.0.1
+```
+
+Put any HTTPS reverse proxy in front, set `SPAMGUARD_ENV=production` and `SPAMGUARD_TRUST_PROXY=1`, and schedule `scripts/backup_and_retention.py` daily. For screenshot and QR checks install `requirements-images.txt` and Tesseract.
+
+## Verification status
+
+Tested on the development machine: the application, the test suite, the start-up configuration logic, and the backup of linked state directories. Not run anywhere yet: `docker build`, `docker compose up`, certificate issuance, and Google sign-in against a real OAuth client, because the development machine has no Docker and no domain or credentials were available. The `container` job in `.github/workflows/tests.yml` builds the image, waits for the health check and runs a prediction inside it on every push; treat the deployment as unverified until that job has passed once.

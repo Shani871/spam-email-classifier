@@ -43,7 +43,8 @@ if result["evidence"]:
             elif loc_item.get("excerpt"):
                 st.code(loc_item["excerpt"], language=None)
             if loc_item.get("displayed_text"):
-                st.caption(f"Displayed link text: `{loc_item['displayed_text']}`")
+                st.caption("Displayed link text")
+                st.code(loc_item["displayed_text"], language=None)
             st.info(f"**Actionable Advice:** {loc_item['advice']}", icon=":material/shield:")
 else:
     st.success("No high-risk scam patterns detected. The sender is unverified; practice standard caution before sharing payment or personal details.", icon=":material/check_circle:")

@@ -19,9 +19,6 @@ if PROJECT_ROOT not in sys.path:
 from src.ai_threat_intelligence import compute_threat_intelligence
 from src.gmail_scanner import scan_gmail_inbox
 
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-AUDIT_LOG_FILE = os.path.join(DATA_DIR, "threat_audit_log.json")
-PROCESSED_FILE = os.path.join(DATA_DIR, "processed_emails.json")
 
 # Built-in simulated scenario pool for automated testing & live SOC simulation
 SIMULATED_FEED = [

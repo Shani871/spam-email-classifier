@@ -9,7 +9,11 @@ ML classification & forensics pipeline.
 import imaplib
 import email
 from email.header import decode_header
+import ipaddress
+import os
 import re
+import socket
+import ssl
 from typing import List, Dict, Any, Tuple, Optional
 
 from src.predict import predict_email
@@ -32,6 +36,42 @@ KNOWN_IMAP_PROVIDERS = {
     "zoho.com": ("imap.zoho.com", 993, "Zoho Mail"),
     "aol.com": ("imap.aol.com", 993, "AOL Mail"),
 }
+
+
+IMAP_TIMEOUT_SECONDS = 15
+
+
+def validate_imap_endpoint(host: str, port: int) -> None:
+    """Reject custom IMAP endpoints that would turn the server into a network probe.
+
+    Only hosts a person typed are checked; the built-in provider hosts are constants.
+    The host must be a DNS name or public IP, every resolved address must be public,
+    and the port must be an allowed IMAP-over-TLS port (SPAMGUARD_IMAP_PORTS, default 993).
+    """
+    allowed_ports = {int(p) for p in os.environ.get("SPAMGUARD_IMAP_PORTS", "993").split(",") if p.strip().isdigit()}
+    if int(port) not in allowed_ports:
+        raise ValueError(f"IMAP port {port} is not allowed. Use {', '.join(str(p) for p in sorted(allowed_ports))}.")
+    host = str(host or "").strip().rstrip(".")
+    if not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", host):
+        raise ValueError("Enter a valid IMAP server name, for example mail.example.com.")
+    try:
+        infos = socket.getaddrinfo(host, int(port), type=socket.SOCK_STREAM)
+    except (socket.gaierror, UnicodeError):
+        raise ValueError(f"The IMAP server name {host} could not be found.")
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not address.is_global:
+            raise ValueError("That IMAP server resolves to a private or reserved network address, which is not allowed.")
+
+
+def open_imap_connection(host: str, port: int, custom: bool = False):
+    """Open IMAP over TLS with certificate and hostname verification and a timeout.
+
+    imaplib's default context does not verify certificates, so one is always supplied.
+    """
+    if custom:
+        validate_imap_endpoint(host, port)
+    return imaplib.IMAP4_SSL(host, int(port), ssl_context=ssl.create_default_context(), timeout=IMAP_TIMEOUT_SECONDS)
 
 
 def resolve_imap_settings(
@@ -160,7 +200,7 @@ def verify_inbox_connection(
         }
 
     # Demo mode handling
-    if clean_email == "demo@spamguard.local" or clean_pwd == "demo":
+    if clean_email == "demo@spamguard.local":
         return {
             "success": True,
             "provider": "SpamGuard Demo Feed",
@@ -175,7 +215,17 @@ def verify_inbox_connection(
 
     mail = None
     try:
-        mail = imaplib.IMAP4_SSL(host, port)
+        mail = open_imap_connection(host, port, custom=provider == "Custom IMAP")
+    except ValueError as exc:
+        return {
+            "success": False,
+            "error_type": "ENDPOINT_NOT_ALLOWED",
+            "message": str(exc),
+            "provider": provider,
+            "host": host,
+            "port": port,
+            "troubleshooting": "Use the public IMAP server name and TLS port published by your mail provider."
+        }
     except Exception as exc:
         return {
             "success": False,
@@ -441,7 +491,7 @@ def scan_gmail_inbox(
     clean_pwd = str(app_password or "").strip()
 
     # Demo feed support
-    if clean_email == "demo@spamguard.local" or clean_pwd == "demo":
+    if clean_email == "demo@spamguard.local":
         return get_simulated_inbox(max_emails, only_unread, model_type)
 
     host, port, provider = resolve_imap_settings(clean_email, imap_host, imap_port)
@@ -452,7 +502,9 @@ def scan_gmail_inbox(
 
     # Connect to IMAP server
     try:
-        mail = imaplib.IMAP4_SSL(host, port)
+        mail = open_imap_connection(host, port, custom=provider == "Custom IMAP")
+    except ValueError:
+        raise
     except Exception as e:
         raise ConnectionError(f"Could not connect to {provider} ({host}:{port}): {e}")
 

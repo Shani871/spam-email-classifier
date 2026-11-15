@@ -36,6 +36,22 @@ def payment_details(text):
     return sorted({match.upper() for pattern in patterns for match in re.findall(pattern, text, re.I)})
 
 
+# Wording cues that are common in ordinary mail ("urgent", "immediately", "payment").
+WEAK_WORDING_TITLES = {"Time pressure language", "Threat or security-alert language",
+                       "Payment or financial language", "Prize or reward language"}
+
+
+def _only_weak_wording(evidence, score):
+    """True when the only finding is one kind of pressure wording and the overall score is low.
+
+    A single "urgent" in an otherwise unremarkable message is shown as evidence but does
+    not, alone, raise the assessment. Two kinds of cue, any link, header, attachment,
+    sender or rule finding, or a score of 20 or more still does.
+    """
+    titles = {item.get("title") for item in evidence}
+    return score < 20 and len(titles) == 1 and titles <= WEAK_WORDING_TITLES
+
+
 def check_message(text, category="General message", sender="", company_domain="", previous_text="", headers=None, attachments=None, model_type="svm", previous_sender="", previous_reply_to="", previous_headers=None):
     text = str(text or "").strip()
     if not text and not headers and not attachments:
@@ -129,7 +145,7 @@ def check_message(text, category="General message", sender="", company_domain=""
         assessment = "Unable to assess"
     elif score >= 70:
         assessment = "High risk"
-    elif evidence or score >= 40 or is_job or category == "Invoice or payment":
+    elif (evidence and not _only_weak_wording(evidence, score)) or score >= 40 or is_job or category == "Invoice or payment":
         assessment = "Needs verification"
     else:
         assessment = "No strong warning found"
@@ -149,6 +165,29 @@ def check_message(text, category="General message", sender="", company_domain=""
             "localized_summaries": localized_summaries,
             "payment_comparison": {"before": before, "after": after},
             "conversation_comparison": conv_result}
+
+
+INBOX_TAGS = {
+    "High risk": "🚨 High risk",
+    "Needs verification": "⚠️ Needs verification",
+    "No strong warning found": "✅ No strong warning",
+    "Unable to assess": "❔ Unable to assess",
+}
+
+
+def inbox_triage(message, model_type="svm"):
+    """Assessment for an inbox list row, using the same checks as the in-depth result.
+
+    The raw classifier verdict alone is not shown as a verdict: it is one input to
+    the score, alongside links, sender headers, attachments and wording.
+    """
+    try:
+        result = check_message(message.get("full_text", ""), sender=message.get("sender", ""),
+                               headers=message.get("headers"), attachments=message.get("attachments"),
+                               model_type=model_type)
+        return result["assessment"]
+    except (FileNotFoundError, ValueError):
+        return "Unable to assess"
 
 
 def recovery_steps(stage, language="English"):

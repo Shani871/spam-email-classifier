@@ -44,7 +44,7 @@ def is_authorized_admin(admin_user: Any = None) -> bool:
             return bool(admin_user and admin_user in admin_emails)
         return False
 
-    if os.environ.get("SPAMGUARD_LOCAL_ADMIN") == "1":
+    if os.environ.get("SPAMGUARD_LOCAL_ADMIN") == "1" and os.environ.get("SPAMGUARD_ENV") != "production":
         return True
     try:
         from src.ui_shared import is_admin

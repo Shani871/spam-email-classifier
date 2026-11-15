@@ -6,6 +6,7 @@ Saves models and metrics to the models/ directory.
 """
 
 import os
+import re
 import json
 import joblib
 import pandas as pd
@@ -59,6 +60,31 @@ _ENRON_MARKERS = _ENRON_STOPWORDS | frozenset({
 
 # Max fraction of total ham examples allowed to be Enron-heavy before downsampling.
 _MAX_ENRON_HAM_RATIO = 0.25
+
+# TF-IDF and classifier settings chosen by 5-fold cross-validation on the training
+# partition only (scripts/model_selection.py; results in docs/MODEL_CARD.md).
+TFIDF_MAX_FEATURES = 100000
+TFIDF_MIN_DF = 2
+SVM_C = 3.0
+NB_ALPHA = 0.1
+RANDOM_SEED = 42
+
+
+def is_bow_reconstruction(text: str) -> bool:
+    """True for pseudo-text rebuilt from a word-count matrix (dataset/emails-2.csv).
+
+    Those rows are a vocabulary-ordered list of repeated words ("the the the to to ect ..."),
+    not messages: word order is lost and several columns are substring counts. They are
+    excluded from training and evaluation because they lowered accuracy on real text.
+    """
+    if re.search(r"[^a-z ]", text):
+        return False
+    tokens = text.split()
+    if len(tokens) < 5:
+        return False
+    repeats = sum(a == b for a, b in zip(tokens, tokens[1:])) / (len(tokens) - 1)
+    single_letters = sum(len(t) == 1 for t in tokens) / len(tokens)
+    return (len(tokens) >= 12 and repeats >= 0.25) or single_letters >= 0.4
 
 
 def _is_enron_heavy(text: str) -> bool:
@@ -132,108 +158,116 @@ def audit_feature_bias(top_features: dict, model_name: str) -> None:
         print(f"  [bias-audit] {model_name}: no corpus-specific tokens in top ham features.")
 
 
-def load_and_preprocess_data():
+def load_and_preprocess_data(include_bow_reconstructions: bool = False):
     """
-    Discovers, loads, and combines all available datasets in the dataset/ directory:
-    - spam.csv (standard SMS/email labeled benchmark)
-    - emails.csv (Kaggle raw email dataset with 'text' and 'spam' columns)
-    - emails-2.csv (Kaggle email word-count frequency matrix)
-    - ham_diverse.csv (curated diverse ham to dilute Enron-corpus bias)
+    Loads and combines the labelled text in dataset/:
+    - spam.csv: merged SMS and email benchmark rows (label, text)
+    - emails.csv: raw emails with 'text' and 'spam' columns (already contained in spam.csv;
+      loaded so the pipeline still works if spam.csv is regenerated without it)
+    - ham_diverse.csv: curated modern legitimate messages
 
-    After combining, Enron-heavy ham examples are capped at 35% of total ham so
-    corpus-specific proper nouns (enron, kaminski, vince…) cannot dominate TF-IDF
-    ham feature weights.
+    Each row gets a 'source' (sms, email, modern_ham, bow) used for stratified splitting
+    and per-source reporting. Rows rebuilt from the emails-2.csv word-count matrix are
+    dropped unless include_bow_reconstructions is True (kept only for the ablation in
+    scripts/model_selection.py). Exact duplicates are removed on raw and cleaned text
+    before any split, so the same message cannot be in both train and test.
     """
     dfs = []
 
-    # 1. Base dataset/spam.csv
     spam_path = os.path.join(DATASET_DIR, "spam.csv")
     if os.path.exists(spam_path):
-        try:
-            df_s = pd.read_csv(spam_path)
-            df_s.columns = [c.strip().lower() for c in df_s.columns]
-            if "label" in df_s.columns and "text" in df_s.columns:
-                df_s = df_s.dropna(subset=['text', 'label'])
-                df_s['label'] = df_s['label'].astype(str).str.lower().str.strip()
-                df_s = df_s[df_s['label'].isin(['ham', 'spam'])]
-                dfs.append(df_s[['label', 'text']])
-                print(f"Loaded {len(df_s)} rows from spam.csv")
-        except Exception as e:
-            print(f"Warning: Failed to load spam.csv: {e}")
+        df_s = pd.read_csv(spam_path)
+        df_s.columns = [c.strip().lower() for c in df_s.columns]
+        if "label" in df_s.columns and "text" in df_s.columns:
+            df_s = df_s.dropna(subset=["text", "label"])
+            df_s["label"] = df_s["label"].astype(str).str.lower().str.strip()
+            df_s = df_s[df_s["label"].isin(["ham", "spam"])]
+            dfs.append(df_s[["label", "text"]].assign(source="benchmark"))
+            print(f"Loaded {len(df_s)} rows from spam.csv")
 
-    # 2. dataset/emails.csv (raw emails)
     emails_path = os.path.join(DATASET_DIR, "emails.csv")
     if os.path.exists(emails_path):
-        try:
-            df_e = pd.read_csv(emails_path)
-            df_e.columns = [c.strip().lower() for c in df_e.columns]
-            if "text" in df_e.columns:
-                label_col = "spam" if "spam" in df_e.columns else ("label" if "label" in df_e.columns else None)
-                if label_col:
-                    df_e['label'] = df_e[label_col].map({1: 'spam', 0: 'ham', '1': 'spam', '0': 'ham', 'spam': 'spam', 'ham': 'ham'})
-                    df_e = df_e.dropna(subset=['text', 'label'])
-                    dfs.append(df_e[['label', 'text']])
-                    print(f"Loaded {len(df_e)} rows from emails.csv")
-        except Exception as e:
-            print(f"Warning: Failed to load emails.csv: {e}")
+        df_e = pd.read_csv(emails_path)
+        df_e.columns = [c.strip().lower() for c in df_e.columns]
+        label_col = "spam" if "spam" in df_e.columns else ("label" if "label" in df_e.columns else None)
+        if "text" in df_e.columns and label_col:
+            df_e["label"] = df_e[label_col].map({1: "spam", 0: "ham", "1": "spam", "0": "ham", "spam": "spam", "ham": "ham"})
+            df_e = df_e.dropna(subset=["text", "label"])
+            dfs.append(df_e[["label", "text"]].assign(source="benchmark"))
+            print(f"Loaded {len(df_e)} rows from emails.csv")
 
-    # 3. dataset/emails-2.csv (word-count matrix)
-    emails2_path = os.path.join(DATASET_DIR, "emails-2.csv")
-    if os.path.exists(emails2_path):
-        try:
-            df_2 = pd.read_csv(emails2_path)
-            if "Prediction" in df_2.columns:
-                word_cols = [c for c in df_2.columns if c not in ['Email No.', 'Prediction', 'email no.']]
-                vals = df_2[word_cols].values
-                cols = list(word_cols)
-                texts = []
-                for row in vals:
-                    words = []
-                    for idx in row.nonzero()[0]:
-                        words.extend([cols[idx]] * int(row[idx]))
-                    texts.append(' '.join(words))
-                df_rec = pd.DataFrame({
-                    'text': texts,
-                    'label': df_2['Prediction'].map({0: 'ham', 1: 'spam', '0': 'ham', '1': 'spam'})
-                }).dropna(subset=['text', 'label'])
-                dfs.append(df_rec[['label', 'text']])
-                print(f"Loaded and reconstructed {len(df_rec)} rows from emails-2.csv")
-        except Exception as e:
-            print(f"Warning: Failed to load emails-2.csv: {e}")
-
-    # 4. dataset/ham_diverse.csv — curated diverse ham to dilute corpus-specific signals
     diverse_path = os.path.join(DATASET_DIR, "ham_diverse.csv")
     if os.path.exists(diverse_path):
-        try:
-            df_d = pd.read_csv(diverse_path)
-            df_d.columns = [c.strip().lower() for c in df_d.columns]
-            if "label" in df_d.columns and "text" in df_d.columns:
-                df_d = df_d.dropna(subset=['text', 'label'])
-                df_d['label'] = df_d['label'].astype(str).str.lower().str.strip()
-                df_d = df_d[df_d['label'] == 'ham']
-                dfs.append(df_d[['label', 'text']])
-                print(f"Loaded {len(df_d)} rows from ham_diverse.csv")
-        except Exception as e:
-            print(f"Warning: Failed to load ham_diverse.csv: {e}")
+        df_d = pd.read_csv(diverse_path)
+        df_d.columns = [c.strip().lower() for c in df_d.columns]
+        if "label" in df_d.columns and "text" in df_d.columns:
+            df_d = df_d.dropna(subset=["text", "label"])
+            df_d["label"] = df_d["label"].astype(str).str.lower().str.strip()
+            df_d = df_d[df_d["label"] == "ham"]
+            dfs.append(df_d[["label", "text"]].assign(source="modern_ham"))
+            print(f"Loaded {len(df_d)} rows from ham_diverse.csv")
 
     if not dfs:
         raise FileNotFoundError(f"No valid dataset found in {DATASET_DIR}.")
 
     df_combined = pd.concat(dfs, ignore_index=True)
-    df_combined = df_combined.dropna(subset=['text', 'label']).drop_duplicates(subset=['text']).reset_index(drop=True)
+    df_combined["text"] = df_combined["text"].astype(str)
+    df_combined = df_combined.drop_duplicates(subset=["text"]).reset_index(drop=True)
+
+    benchmark = df_combined["source"] == "benchmark"
+    is_bow = df_combined["text"].map(is_bow_reconstruction)
+    is_email = df_combined["text"].str.lower().str.lstrip().str.startswith("subject")
+    df_combined.loc[benchmark, "source"] = np.where(is_bow[benchmark], "bow", np.where(is_email[benchmark], "email", "sms"))
+    dropped = int((df_combined["source"] == "bow").sum())
+    if not include_bow_reconstructions:
+        df_combined = df_combined[df_combined["source"] != "bow"].reset_index(drop=True)
+        print(f"Excluded {dropped} word-count reconstructions that are not real message text.")
     print(f"Combined unique dataset size: {len(df_combined)} samples")
 
     # Cap Enron-heavy ham so corpus-specific proper nouns don't dominate features.
     df_combined = balance_ham_sources(df_combined)
 
-    # Preprocess text
-    df_combined['cleaned_text'] = df_combined['text'].apply(clean_text)
-    # Filter out empty texts after cleaning
-    df_combined = df_combined[df_combined['cleaned_text'].str.strip() != ""].drop_duplicates(subset=["cleaned_text"]).reset_index(drop=True)
+    df_combined["cleaned_text"] = df_combined["text"].apply(clean_text)
+    df_combined = df_combined[df_combined["cleaned_text"].str.strip() != ""].drop_duplicates(subset=["cleaned_text"]).reset_index(drop=True)
 
-    # Encode label: ham -> 0, spam -> 1
-    df_combined['label_binary'] = df_combined['label'].map({'ham': 0, 'spam': 1})
+    df_combined["label_binary"] = df_combined["label"].map({"ham": 0, "spam": 1})
     return df_combined
+
+
+def build_vectorizer() -> TfidfVectorizer:
+    """Word 1-2 gram TF-IDF. Corpus-specific Enron names are excluded from the vocabulary."""
+    return TfidfVectorizer(
+        ngram_range=(1, 2),
+        max_features=TFIDF_MAX_FEATURES,
+        min_df=TFIDF_MIN_DF,
+        sublinear_tf=True,
+        stop_words=list(_ENRON_STOPWORDS),
+    )
+
+
+def near_duplicate_audit(X_train_tfidf, X_test_tfidf, y_test, y_pred, threshold: float = 0.9) -> dict:
+    """Measures train/test near-duplication (TF-IDF cosine >= threshold) and accuracy without it.
+
+    Exact duplicates are removed before splitting, but templated spam campaigns can still
+    put near-copies on both sides. Reporting accuracy on the remaining "novel" test rows
+    shows how much the headline number depends on them.
+    """
+    y_test = np.asarray(y_test)
+    y_pred = np.asarray(y_pred)
+    best = np.zeros(X_test_tfidf.shape[0])
+    for start in range(0, X_test_tfidf.shape[0], 500):
+        block = X_test_tfidf[start:start + 500] @ X_train_tfidf.T
+        best[start:start + 500] = block.max(axis=1).toarray().ravel()
+    near = best >= threshold
+    novel = ~near
+    out = {"cosine_threshold": threshold, "test_rows_with_near_duplicate_in_train": int(near.sum()),
+           "share_of_test": round(float(near.mean()), 4), "novel_test_rows": int(novel.sum())}
+    if novel.sum() and len(set(y_test[novel])) == 2:
+        out["novel_accuracy"] = round(float(accuracy_score(y_test[novel], y_pred[novel])), 4)
+        out["novel_precision_spam"] = round(float(precision_score(y_test[novel], y_pred[novel], zero_division=0)), 4)
+        out["novel_recall_spam"] = round(float(recall_score(y_test[novel], y_pred[novel], zero_division=0)), 4)
+        out["novel_f1_spam"] = round(float(f1_score(y_test[novel], y_pred[novel], zero_division=0)), 4)
+    return out
 
 
 def extract_top_features(vectorizer, classifier, n_features: int = 20):
@@ -296,38 +330,47 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
     X = df['cleaned_text']
     y = df['label_binary']
 
-    # Stratified split: 80% train, 20% test
+    # Stratified split: 80% train, 20% test, stratified by class and (when known) source,
+    # so SMS, email and modern-ham rows are represented in both partitions.
+    test_sources = None
     if test_data is None:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.20, random_state=42, stratify=y
-        )
+        strata = y.astype(str)
+        if "source" in df.columns:
+            candidate = df["source"].astype(str) + ":" + y.astype(str)
+            if candidate.value_counts().min() >= 5:
+                strata = candidate
+        train_idx, test_idx = train_test_split(df.index, test_size=0.20, random_state=RANDOM_SEED, stratify=strata)
+        X_train, X_test, y_train, y_test = X.loc[train_idx], X.loc[test_idx], y.loc[train_idx], y.loc[test_idx]
+        if "source" in df.columns:
+            test_sources = df.loc[test_idx, "source"].to_numpy()
     else:
         X_train, y_train = X, y
         X_test, y_test = test_data["cleaned_text"], test_data["label_binary"]
+        if "source" in test_data.columns:
+            test_sources = test_data["source"].to_numpy()
 
     print(f"Training set: {len(X_train)} samples, Test set: {len(X_test)} samples.")
 
     # Feature extraction with TF-IDF.
     # Corpus-specific proper nouns (Enron names, abbreviations) are excluded from the
     # vocabulary so they cannot appear as strong ham features at train or inference time.
-    vectorizer = TfidfVectorizer(
-        ngram_range=(1, 2),
-        max_features=6000,
-        sublinear_tf=True,
-        stop_words=list(_ENRON_STOPWORDS),
-    )
+    # The vectorizer is fitted on the training partition only (no test leakage).
+    vectorizer = build_vectorizer()
+    if len(X_train) < 200:
+        # Tiny corpora (unit tests, first feedback rounds): keep every term.
+        vectorizer.set_params(min_df=1)
 
     X_train_tfidf = vectorizer.fit_transform(X_train)
     X_test_tfidf = vectorizer.transform(X_test)
 
     # 1. Train Multinomial Naive Bayes
     print("\nTraining Multinomial Naive Bayes Classifier...")
-    nb_clf = MultinomialNB(alpha=0.1)
+    nb_clf = MultinomialNB(alpha=NB_ALPHA)
     nb_clf.fit(X_train_tfidf, y_train)
 
     # 2. Train Calibrated Linear SVM (yields well-calibrated probabilities via sigmoid)
     print("Training Support Vector Machine (LinearSVC with probability calibration)...")
-    base_svm = LinearSVC(C=1.0, class_weight='balanced', random_state=42, max_iter=3000)
+    base_svm = LinearSVC(C=SVM_C, class_weight='balanced', random_state=RANDOM_SEED, max_iter=5000)
     svm_clf = CalibratedClassifierCV(estimator=base_svm, method='sigmoid', cv=3)
     svm_clf.fit(X_train_tfidf, y_train)
 
@@ -369,6 +412,20 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
             "classification_report": rep,
             "top_features": top_words
         }
+        if test_sources is not None:
+            by_source = {}
+            y_true_arr = np.asarray(y_test)
+            for source in sorted(set(test_sources)):
+                mask = test_sources == source
+                by_source[source] = {
+                    "test_rows": int(mask.sum()),
+                    "false_positives": int(((y_pred == 1) & (y_true_arr == 0) & mask).sum()),
+                    "false_negatives": int(((y_pred == 0) & (y_true_arr == 1) & mask).sum()),
+                    "ham_rows": int(((y_true_arr == 0) & mask).sum()),
+                    "spam_rows": int(((y_true_arr == 1) & mask).sum()),
+                }
+            all_metrics[key]["by_source"] = by_source
+        all_metrics[key]["near_duplicate_audit"] = near_duplicate_audit(X_train_tfidf, X_test_tfidf, y_test, y_pred)
 
         print(f"\n--- {display_name} Performance ---")
         print(f"Accuracy:  {acc * 100:.2f}%")
@@ -405,6 +462,16 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
         "test_samples": len(X_test),
         "ham_count": int((df['label'] == 'ham').sum()),
         "spam_count": int((df['label'] == 'spam').sum()),
+        "source_counts": {k: int(v) for k, v in df["source"].value_counts().items()} if "source" in df.columns else {},
+        "training_config": {
+            "tfidf": {"ngram_range": [1, 2], "max_features": TFIDF_MAX_FEATURES, "min_df": int(vectorizer.min_df), "sublinear_tf": True,
+                      "vocabulary_size": len(vectorizer.vocabulary_)},
+            "svm": {"C": SVM_C, "class_weight": "balanced", "calibration": "sigmoid, 3-fold"},
+            "naive_bayes": {"alpha": NB_ALPHA},
+            "seed": RANDOM_SEED,
+            "split": "holdout supplied by caller" if test_data is not None else "80/20 stratified by source and label after exact-duplicate removal",
+            "scikit_learn": __import__("sklearn").__version__,
+        },
         "models": all_metrics
     }
 

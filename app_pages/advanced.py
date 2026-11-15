@@ -107,6 +107,8 @@ elif tool == "Batch CSV check":
             elif len(frame) > 500:
                 st.warning("Check up to 500 messages per file.")
             elif st.button("Check batch", type="primary"):
+                from src.rate_limit import enforce
+                enforce("batch_check", st.session_state.get("identity", ""))
                 with st.spinner("Checking messages…"):
                     rows = [check_message(str(text)[:50000] if pd.notna(text) else "") for text in frame.text]
                     frame["assessment"] = [r["assessment"] for r in rows]
@@ -115,8 +117,9 @@ elif tool == "Batch CSV check":
                 # Neutralize spreadsheet formulas in every exported string column.
                 safe = frame.map(lambda v: "'" + v if isinstance(v, str) and v.lstrip().startswith(("=", "+", "-", "@")) else v)
                 st.download_button("Download checked CSV", safe.to_csv(index=False), "checked-messages.csv", "text/csv")
-        except (ValueError, pd.errors.ParserError, UnicodeDecodeError, FileNotFoundError):
-            st.error("This CSV could not be checked. Verify the format and model setup.")
+        except (ValueError, pd.errors.ParserError, UnicodeDecodeError, FileNotFoundError) as error:
+            from src.rate_limit import RateLimitExceeded
+            st.error(str(error) if isinstance(error, RateLimitExceeded) else "This CSV could not be checked. Verify the format and model setup.")
 elif tool == "Feedback and training":
     from src.active_learning import (
         get_feedback_records,

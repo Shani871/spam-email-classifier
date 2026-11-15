@@ -7,6 +7,13 @@ from src.user_storage import read_json, update_json
 from src.scam_assistant import check_message, ASSESSMENTS
 
 
+def md_escape(value):
+    """Neutralise Markdown in untrusted text (email subjects, senders, link text) so it
+    cannot render links or remote images when shown with st.markdown or st.caption."""
+    import re
+    return re.sub(r"([\\`*_{}\[\]()#+!|<>~$:-])", r"\\\1", str(value or "")).replace("\n", " ")
+
+
 def auth_configured():
     try:
         return bool(st.secrets.get("auth", {}).get("client_id") or st.secrets.get("auth", {}).get("google", {}).get("client_id"))
@@ -14,14 +21,19 @@ def auth_configured():
         return False
 
 
+def local_admin_enabled():
+    """Development-only switch. It is ignored when SPAMGUARD_ENV=production."""
+    return os.environ.get("SPAMGUARD_LOCAL_ADMIN") == "1" and os.environ.get("SPAMGUARD_ENV") != "production"
+
+
 def is_admin():
-    if os.environ.get("SPAMGUARD_LOCAL_ADMIN") == "1" and not auth_configured():
+    if local_admin_enabled() and not auth_configured():
         return True
     try:
         email = st.user.get("email", "") if st.user.get("is_logged_in", False) else ""
         return bool(email and st.user.get("email_verified", False) and email in st.secrets.get("app", {}).get("admin_emails", []))
     except (FileNotFoundError, KeyError):
-        return os.environ.get("SPAMGUARD_LOCAL_ADMIN") == "1"
+        return local_admin_enabled()
 
 
 def gmail_token():
@@ -33,8 +45,25 @@ def gmail_token():
         return ""
 
 
+def connect_inbox(email_address, app_password, **kwargs):
+    """Rate-limited mailbox connection test. Limits apply per caller and per target mailbox."""
+    from src.gmail_scanner import verify_inbox_connection
+    from src.rate_limit import RateLimitExceeded, enforce, limiter
+    target = str(email_address or "").strip().lower()
+    if target != "demo@spamguard.local":
+        try:
+            enforce("inbox_connect", st.session_state.get("identity", ""))
+            limiter.hit("inbox_connect_target", target)
+        except RateLimitExceeded as error:
+            return {"success": False, "error_type": "RATE_LIMITED", "message": str(error), "provider": "", "host": "",
+                    "troubleshooting": "Connection attempts are limited to protect mailboxes from password guessing."}
+    return verify_inbox_connection(email_address, app_password, **kwargs)
+
+
 def analyze(text, **kwargs):
     from src.monitoring import record_metric, log_security_event, log_error
+    from src.rate_limit import enforce
+    enforce("check", st.session_state.get("identity", ""))
     result = check_message(text, **kwargs)
     st.session_state["result"] = result
     st.session_state["checked_text"] = text

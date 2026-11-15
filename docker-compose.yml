@@ -1,0 +1,62 @@
+# Single-node production stack: app + HTTPS reverse proxy + daily backup.
+# Copy .env.example to .env, fill it in, then:  docker compose up -d --build
+services:
+  app:
+    build: .
+    image: spamguard-ai:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SPAMGUARD_ENV: production
+      SPAMGUARD_TRUST_PROXY: "1"
+      SPAMGUARD_PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - spamguard_state:/var/lib/spamguard
+    expose:
+      - "8501"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  backup:
+    image: spamguard-ai:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      - spamguard_state:/var/lib/spamguard
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      disable: true
+    # Retention cleanup + archive of account data once a day; keeps the last 7 archives.
+    command: ["sh", "-c", "while true; do python scripts/backup_and_retention.py; sleep 86400; done"]
+
+volumes:
+  spamguard_state:
+  caddy_data:
+  caddy_config:

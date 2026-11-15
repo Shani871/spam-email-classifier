@@ -81,7 +81,8 @@ def create_backup_archive(max_backups: int = 7, data_dir: Optional[Path] = None,
             for item in target_data.iterdir():
                 if item.name in {"backups", "logs", ".DS_Store"} or item.suffix in {".tmp", ".lock"}:
                     continue
-                tar.add(item, arcname=f"data/{item.name}")
+                # Top-level entries may be links to a state volume (container layout); archive their contents.
+                tar.add(item.resolve() if item.is_symlink() else item, arcname=f"data/{item.name}")
 
     # Prune older backups
     all_backups = sorted(target_backups.glob("spamguard_backup_*.tar.gz"), key=os.path.getmtime)

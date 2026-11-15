@@ -1,422 +1,516 @@
 {
-  "dataset_size": 14885,
-  "train_samples": 11908,
-  "test_samples": 2977,
-  "ham_count": 11449,
-  "spam_count": 3436,
+  "dataset_size": 10665,
+  "train_samples": 8532,
+  "test_samples": 2133,
+  "ham_count": 8686,
+  "spam_count": 1979,
+  "source_counts": {
+    "email": 5435,
+    "sms": 5090,
+    "modern_ham": 140
+  },
+  "training_config": {
+    "tfidf": {
+      "ngram_range": [
+        1,
+        2
+      ],
+      "max_features": 100000,
+      "min_df": 2,
+      "sublinear_tf": true,
+      "vocabulary_size": 100000
+    },
+    "svm": {
+      "C": 3.0,
+      "class_weight": "balanced",
+      "calibration": "sigmoid, 3-fold"
+    },
+    "naive_bayes": {
+      "alpha": 0.1
+    },
+    "seed": 42,
+    "split": "80/20 stratified by source and label after exact-duplicate removal",
+    "scikit_learn": "1.9.1"
+  },
   "models": {
     "naive_bayes": {
       "display_name": "Multinomial Naive Bayes",
-      "accuracy": 0.9429,
-      "precision_spam": 0.873,
-      "recall_spam": 0.8806,
-      "f1_spam": 0.8768,
-      "roc_auc": 0.9789,
+      "accuracy": 0.9742,
+      "precision_spam": 0.9802,
+      "recall_spam": 0.8785,
+      "f1_spam": 0.9266,
+      "roc_auc": 0.991,
       "confusion_matrix": {
-        "true_negative": 2202,
-        "false_positive": 88,
-        "false_negative": 82,
-        "true_positive": 605
+        "true_negative": 1731,
+        "false_positive": 7,
+        "false_negative": 48,
+        "true_positive": 347
       },
       "classification_report": {
         "ham": {
-          "precision": 0.9640980735551664,
-          "recall": 0.9615720524017467,
-          "f1-score": 0.9628334062090075,
-          "support": 2290.0
+          "precision": 0.9730185497470489,
+          "recall": 0.9959723820483314,
+          "f1-score": 0.9843616718794427,
+          "support": 1738.0
         },
         "spam": {
-          "precision": 0.873015873015873,
-          "recall": 0.8806404657933042,
-          "f1-score": 0.8768115942028986,
-          "support": 687.0
+          "precision": 0.980225988700565,
+          "recall": 0.8784810126582279,
+          "f1-score": 0.9265687583444593,
+          "support": 395.0
         },
-        "accuracy": 0.9428955324151831,
+        "accuracy": 0.974214721050164,
         "macro avg": {
-          "precision": 0.9185569732855197,
-          "recall": 0.9211062590975254,
-          "f1-score": 0.919822500205953,
-          "support": 2977.0
+          "precision": 0.9766222692238069,
+          "recall": 0.9372266973532797,
+          "f1-score": 0.9554652151119509,
+          "support": 2133.0
         },
         "weighted avg": {
-          "precision": 0.9430791041999448,
-          "recall": 0.9428955324151831,
-          "f1-score": 0.9429822188229823,
-          "support": 2977.0
+          "precision": 0.9743532606643667,
+          "recall": 0.974214721050164,
+          "f1-score": 0.9736592804840752,
+          "support": 2133.0
         }
       },
       "top_features": {
         "spam_keywords": [
           {
             "word": "viagra",
-            "score": 6.5068
-          },
-          {
-            "word": "andmanyother",
-            "score": 6.1977
+            "score": 5.6348
           },
           {
             "word": "150p",
-            "score": 6.1771
+            "score": 5.2882
+          },
+          {
+            "word": "andmanyother",
+            "score": 5.2639
           },
           {
             "word": "stationery",
-            "score": 5.947
+            "score": 5.2003
+          },
+          {
+            "word": "oem",
+            "score": 5.1118
+          },
+          {
+            "word": "subject save",
+            "score": 5.0482
           },
           {
             "word": "oniine",
-            "score": 5.7609
+            "score": 4.9722
           },
           {
-            "word": "php",
-            "score": 5.6383
+            "word": "number prize",
+            "score": 4.9533
           },
           {
-            "word": "submit website",
-            "score": 5.4868
+            "word": "number claim",
+            "score": 4.9099
           },
           {
             "word": "mx number",
-            "score": 5.4436
+            "score": 4.8285
           },
           {
-            "word": "biz",
-            "score": 5.3303
+            "word": "ringtone",
+            "score": 4.8218
           },
           {
-            "word": "spam",
-            "score": 5.29
+            "word": "hello welcome",
+            "score": 4.8216
+          },
+          {
+            "word": "won currency",
+            "score": 4.7806
+          },
+          {
+            "word": "macromedia",
+            "score": 4.7567
+          },
+          {
+            "word": "submit website",
+            "score": 4.7372
+          },
+          {
+            "word": "stop number",
+            "score": 4.6944
           },
           {
             "word": "projecthoneypot",
-            "score": 5.1991
+            "score": 4.6506
           },
           {
-            "word": "pills",
-            "score": 5.1915
+            "word": "prize",
+            "score": 4.6379
           },
           {
-            "word": "paliourg",
-            "score": 5.1758
+            "word": "oem software",
+            "score": 4.6182
           },
           {
-            "word": "wiil",
-            "score": 5.1058
-          },
-          {
-            "word": "ic prescription",
-            "score": 5.0987
-          },
-          {
-            "word": "de meds",
-            "score": 5.0918
-          },
-          {
-            "word": "professionai",
-            "score": 5.0802
-          },
-          {
-            "word": "search engines",
-            "score": 5.0749
-          },
-          {
-            "word": "localized software",
-            "score": 5.053
-          },
-          {
-            "word": "cs currency",
-            "score": 4.9785
+            "word": "shops",
+            "score": 4.615
           }
         ],
         "ham_keywords": [
           {
-            "word": "dinner",
-            "score": 4.9934
+            "word": "yeah",
+            "score": 4.5936
           },
           {
             "word": "lol",
-            "score": 4.9813
+            "score": 4.5064
           },
           {
-            "word": "mmbtu",
-            "score": 4.9073
+            "word": "dinner",
+            "score": 4.4649
           },
           {
             "word": "research group",
-            "score": 4.8563
+            "score": 4.4158
+          },
+          {
+            "word": "kevin",
+            "score": 4.3838
           },
           {
             "word": "gibner",
-            "score": 4.8425
+            "score": 4.3825
           },
           {
             "word": "zimin",
-            "score": 4.7707
+            "score": 4.2872
           },
           {
-            "word": "cos",
-            "score": 4.7435
+            "word": "rice",
+            "score": 4.2156
+          },
+          {
+            "word": "lon",
+            "score": 4.114
+          },
+          {
+            "word": "meeting",
+            "score": 4.105
+          },
+          {
+            "word": "gonna",
+            "score": 4.0661
           },
           {
             "word": "tanya",
-            "score": 4.5346
+            "score": 4.0653
           },
           {
-            "word": "xls xls",
-            "score": 4.5332
+            "word": "haha",
+            "score": 4.0352
           },
           {
-            "word": "derivatives",
-            "score": 4.5093
-          },
-          {
-            "word": "xls attached",
-            "score": 4.4919
-          },
-          {
-            "word": "sitara",
-            "score": 4.4796
+            "word": "lunch",
+            "score": 4.033
           },
           {
             "word": "vasant",
-            "score": 4.4631
+            "score": 4.0283
           },
           {
-            "word": "btu btu",
-            "score": 4.4392
+            "word": "weather",
+            "score": 4.004
           },
           {
-            "word": "see xls",
-            "score": 4.435
+            "word": "cos",
+            "score": 3.97
           },
           {
-            "word": "nomination",
-            "score": 4.3864
-          },
-          {
-            "word": "mmbtu mmbtu",
-            "score": 4.364
+            "word": "dun",
+            "score": 3.9633
           },
           {
             "word": "wharton",
-            "score": 4.3198
+            "score": 3.9517
           },
           {
-            "word": "amp",
-            "score": 4.3076
-          },
-          {
-            "word": "anjam",
-            "score": 4.277
+            "word": "derivatives",
+            "score": 3.9372
           }
         ]
+      },
+      "by_source": {
+        "email": {
+          "test_rows": 1087,
+          "false_positives": 2,
+          "false_negatives": 32,
+          "ham_rows": 814,
+          "spam_rows": 273
+        },
+        "modern_ham": {
+          "test_rows": 28,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "ham_rows": 28,
+          "spam_rows": 0
+        },
+        "sms": {
+          "test_rows": 1018,
+          "false_positives": 5,
+          "false_negatives": 16,
+          "ham_rows": 896,
+          "spam_rows": 122
+        }
+      },
+      "near_duplicate_audit": {
+        "cosine_threshold": 0.9,
+        "test_rows_with_near_duplicate_in_train": 225,
+        "share_of_test": 0.1055,
+        "novel_test_rows": 1908,
+        "novel_accuracy": 0.9712,
+        "novel_precision_spam": 0.9746,
+        "novel_recall_spam": 0.8486,
+        "novel_f1_spam": 0.9073
       }
     },
     "svm": {
       "display_name": "Support Vector Machine (Linear)",
-      "accuracy": 0.9721,
-      "precision_spam": 0.9481,
-      "recall_spam": 0.9301,
-      "f1_spam": 0.939,
-      "roc_auc": 0.9917,
+      "accuracy": 0.9873,
+      "precision_spam": 0.9646,
+      "recall_spam": 0.9671,
+      "f1_spam": 0.9659,
+      "roc_auc": 0.996,
       "confusion_matrix": {
-        "true_negative": 2255,
-        "false_positive": 35,
-        "false_negative": 48,
-        "true_positive": 639
+        "true_negative": 1724,
+        "false_positive": 14,
+        "false_negative": 13,
+        "true_positive": 382
       },
       "classification_report": {
         "ham": {
-          "precision": 0.9791576204950065,
-          "recall": 0.9847161572052402,
-          "f1-score": 0.98192902242543,
-          "support": 2290.0
+          "precision": 0.9925158318940702,
+          "recall": 0.9919447640966629,
+          "f1-score": 0.9922302158273382,
+          "support": 1738.0
         },
         "spam": {
-          "precision": 0.9480712166172107,
-          "recall": 0.9301310043668122,
-          "f1-score": 0.9390154298310066,
-          "support": 687.0
+          "precision": 0.9646464646464646,
+          "recall": 0.9670886075949368,
+          "f1-score": 0.965865992414665,
+          "support": 395.0
         },
-        "accuracy": 0.9721195834732953,
+        "accuracy": 0.9873417721518988,
         "macro avg": {
-          "precision": 0.9636144185561086,
-          "recall": 0.9574235807860262,
-          "f1-score": 0.9604722261282184,
-          "support": 2977.0
+          "precision": 0.9785811482702674,
+          "recall": 0.9795166858457998,
+          "f1-score": 0.9790481041210015,
+          "support": 2133.0
         },
         "weighted avg": {
-          "precision": 0.9719838349847459,
-          "recall": 0.9721195834732953,
-          "f1-score": 0.9720258856728707,
-          "support": 2977.0
+          "precision": 0.9873548379593284,
+          "recall": 0.9873417721518988,
+          "f1-score": 0.9873479522323988,
+          "support": 2133.0
         }
       },
       "top_features": {
         "spam_keywords": [
           {
             "word": "subject",
-            "score": 4.6276
-          },
-          {
-            "word": "ct",
-            "score": 3.3415
-          },
-          {
-            "word": "urladdr",
-            "score": 2.8035
-          },
-          {
-            "word": "150p",
-            "score": 2.2844
-          },
-          {
-            "word": "dating",
-            "score": 2.1433
-          },
-          {
-            "word": "click",
-            "score": 2.0949
-          },
-          {
-            "word": "software",
-            "score": 2.0765
-          },
-          {
-            "word": "http",
-            "score": 1.9996
+            "score": 4.0301
           },
           {
             "word": "call number",
-            "score": 1.8829
+            "score": 2.6111
           },
           {
-            "word": "claim",
-            "score": 1.7702
+            "word": "click",
+            "score": 2.378
           },
           {
-            "word": "men",
-            "score": 1.63
+            "word": "urladdr",
+            "score": 2.2624
+          },
+          {
+            "word": "http",
+            "score": 2.036
+          },
+          {
+            "word": "free",
+            "score": 1.8493
+          },
+          {
+            "word": "150p",
+            "score": 1.7918
           },
           {
             "word": "sex",
-            "score": 1.5927
-          },
-          {
-            "word": "link",
-            "score": 1.5515
-          },
-          {
-            "word": "alert",
-            "score": 1.5448
-          },
-          {
-            "word": "reply",
-            "score": 1.4869
-          },
-          {
-            "word": "sexual",
-            "score": 1.4833
-          },
-          {
-            "word": "re number",
-            "score": 1.4631
+            "score": 1.7541
           },
           {
             "word": "number",
-            "score": 1.4347
+            "score": 1.7136
           },
           {
-            "word": "mobile",
-            "score": 1.4287
+            "word": "software",
+            "score": 1.6975
+          },
+          {
+            "word": "claim",
+            "score": 1.6947
+          },
+          {
+            "word": "viagra",
+            "score": 1.6916
           },
           {
             "word": "txt",
-            "score": 1.4259
+            "score": 1.674
+          },
+          {
+            "word": "hear new",
+            "score": 1.6562
+          },
+          {
+            "word": "currency number",
+            "score": 1.6063
+          },
+          {
+            "word": "arsenal",
+            "score": 1.5565
+          },
+          {
+            "word": "mobile",
+            "score": 1.5312
+          },
+          {
+            "word": "currency",
+            "score": 1.5014
+          },
+          {
+            "word": "reply",
+            "score": 1.4673
+          },
+          {
+            "word": "ringtone",
+            "score": 1.4397
           }
         ],
         "ham_keywords": [
           {
-            "word": "password",
-            "score": 1.5888
+            "word": "sorry",
+            "score": 1.1489
           },
           {
             "word": "energy",
-            "score": 1.4823
+            "score": 1.0184
           },
           {
-            "word": "confirmation",
-            "score": 1.3858
-          },
-          {
-            "word": "forward",
-            "score": 1.3667
-          },
-          {
-            "word": "aren",
-            "score": 1.3374
-          },
-          {
-            "word": "click click",
-            "score": 1.3056
-          },
-          {
-            "word": "questions",
-            "score": 1.3031
-          },
-          {
-            "word": "th th",
-            "score": 1.2949
-          },
-          {
-            "word": "ct ct",
-            "score": 1.2851
-          },
-          {
-            "word": "pm",
-            "score": 1.2753
-          },
-          {
-            "word": "hope",
-            "score": 1.2711
-          },
-          {
-            "word": "mail mail",
-            "score": 1.2489
-          },
-          {
-            "word": "texas",
-            "score": 1.2267
-          },
-          {
-            "word": "employees",
-            "score": 1.2127
-          },
-          {
-            "word": "option",
-            "score": 1.1737
-          },
-          {
-            "word": "deal",
-            "score": 1.1436
-          },
-          {
-            "word": "ze",
-            "score": 1.088
+            "word": "research",
+            "score": 0.9872
           },
           {
             "word": "subject re",
-            "score": 1.073
+            "score": 0.9594
           },
           {
-            "word": "fyi",
-            "score": 1.056
+            "word": "number pm",
+            "score": 0.9356
           },
           {
-            "word": "lease",
-            "score": 1.0382
+            "word": "tel",
+            "score": 0.893
+          },
+          {
+            "word": "pm",
+            "score": 0.8749
+          },
+          {
+            "word": "ok",
+            "score": 0.8628
+          },
+          {
+            "word": "attached",
+            "score": 0.8626
+          },
+          {
+            "word": "morning",
+            "score": 0.8532
+          },
+          {
+            "word": "lt",
+            "score": 0.8415
+          },
+          {
+            "word": "questions",
+            "score": 0.7947
+          },
+          {
+            "word": "lunch",
+            "score": 0.7761
+          },
+          {
+            "word": "conference",
+            "score": 0.7757
+          },
+          {
+            "word": "available",
+            "score": 0.7725
+          },
+          {
+            "word": "password",
+            "score": 0.7722
+          },
+          {
+            "word": "thank",
+            "score": 0.7462
+          },
+          {
+            "word": "jeff",
+            "score": 0.7336
+          },
+          {
+            "word": "model",
+            "score": 0.7195
+          },
+          {
+            "word": "cant",
+            "score": 0.6917
           }
         ]
+      },
+      "by_source": {
+        "email": {
+          "test_rows": 1087,
+          "false_positives": 11,
+          "false_negatives": 5,
+          "ham_rows": 814,
+          "spam_rows": 273
+        },
+        "modern_ham": {
+          "test_rows": 28,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "ham_rows": 28,
+          "spam_rows": 0
+        },
+        "sms": {
+          "test_rows": 1018,
+          "false_positives": 3,
+          "false_negatives": 8,
+          "ham_rows": 896,
+          "spam_rows": 122
+        }
+      },
+      "near_duplicate_audit": {
+        "cosine_threshold": 0.9,
+        "test_rows_with_near_duplicate_in_train": 225,
+        "share_of_test": 0.1055,
+        "novel_test_rows": 1908,
+        "novel_accuracy": 0.9858,
+        "novel_precision_spam": 0.956,
+        "novel_recall_spam": 0.959,
+        "novel_f1_spam": 0.9575
       }
     }
   }

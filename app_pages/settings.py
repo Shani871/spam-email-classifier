@@ -1,5 +1,6 @@
 import streamlit as st
-from src.ui_shared import auth_configured, gmail_token
+from html import escape
+from src.ui_shared import auth_configured, gmail_token, connect_inbox
 from src.user_storage import delete_account_data, read_json, update_json
 from src.gmail_actions import get_sender_rules, add_to_whitelist, add_to_blacklist, remove_sender_rule
 from src.gmail_scanner import verify_inbox_connection, resolve_imap_settings
@@ -21,7 +22,7 @@ if is_oauth_connected or is_imap_connected:
         f'<div style="padding:14px 18px;background:#F0FDF4;border:1px solid #BBF7D0;'
         f'border-radius:10px;margin-bottom:14px;">'
         f'<div style="font-weight:700;color:#15803D;font-size:15px;margin-bottom:4px;">● Connected to Inbox</div>'
-        f'<div style="font-size:13px;color:#1F2937;"><strong>Account:</strong> {connected_email} &nbsp;|&nbsp; <strong>Provider:</strong> {provider_label}</div>'
+        f'<div style="font-size:13px;color:#1F2937;"><strong>Account:</strong> {escape(str(connected_email))} &nbsp;|&nbsp; <strong>Provider:</strong> {escape(str(provider_label))}</div>'
         f'</div>',
         unsafe_allow_html=True
     )
@@ -30,7 +31,7 @@ if is_oauth_connected or is_imap_connected:
     with btn_col1:
         if is_imap_connected and st.button("Test Connection Now", icon=":material/refresh:", width="stretch"):
             with st.spinner("Checking connection with mail server…"):
-                diag = verify_inbox_connection(
+                diag = connect_inbox(
                     imap_creds.get("email_address", ""),
                     imap_creds.get("app_password", ""),
                     imap_host=imap_creds.get("imap_host", ""),
@@ -106,7 +107,7 @@ else:
                     host_to_use, port_to_use, _ = resolve_imap_settings(inbox_email.strip())
                 
                 with st.spinner("Connecting and validating credentials…"):
-                    diag = verify_inbox_connection(
+                    diag = connect_inbox(
                         inbox_email.strip(),
                         inbox_password.strip(),
                         imap_host=host_to_use,

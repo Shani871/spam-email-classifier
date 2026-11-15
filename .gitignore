@@ -49,3 +49,6 @@ models/*.lock
 
 # Scratch build output (report renders)
 tmp/
+
+# Local deployment configuration
+.env

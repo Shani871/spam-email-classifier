@@ -23,3 +23,12 @@ grayColor = "#64748B"
 backgroundColor = "#F8FAFC"
 secondaryBackgroundColor = "#F1F5F9"
 textColor = "#0F172A"
+
+[server]
+headless = true
+enableXsrfProtection = true
+maxUploadSize = 10
+
+[browser]
+# The app promises no external telemetry, so Streamlit usage statistics are off.
+gatherUsageStats = false

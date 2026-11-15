@@ -13,7 +13,7 @@ Technical tools live in **Advanced**: modern detection evaluation benchmark, mod
 ## Run locally
 
 ```sh
-python3 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m streamlit run app.py
 ```
@@ -33,7 +33,7 @@ For screenshot/QR support, install `requirements-images.txt`. macOS can use Appl
 
 ## Evaluation and limits
 
-The included model artifacts were trained on a 14,885-example corpus (SVM accuracy 97.21%, 35 false positives, 48 false negatives on the held-out set). Training excludes Enron-corpus proper nouns (enron, vince, kaminski, ect, hou…) from the TF-IDF vocabulary and caps Enron-heavy training examples at 25% of ham, so the classifier does not exploit corpus-specific names as ham signal. These are benchmark metrics, not validation of the new scam rules, languages, or real inbox performance. Newly trained models deduplicate normalized text; consult their own generated metrics rather than assuming the baseline numbers remain applicable.
+The included models were trained on 10,665 real-text messages (old email and SMS benchmarks plus 140 modern legitimate examples). On a 2,133-message held-out set the SVM scores 98.73% accuracy with 14 false positives and 13 false negatives. Settings were chosen by cross-validation, and rows that were word-count reconstructions rather than messages are excluded. These are benchmark numbers on old corpora: on a small set of modern scenarios the classifier alone still misses scams and flags legitimate mail, which is why the app combines it with link, header and rule checks. Full method, leakage checks and limits are in [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
 
 Assessments are **No strong warning found**, **Needs verification**, **High risk**, or **Unable to assess**. A score is an indicator, not the probability of fraud. Filename checks are not malware scanning. Header checks use declared provider evidence, not new cryptographic verification. Hindi/Hinglish have limited rules and translated labels/recovery guidance; broader language detection remains unevaluated. Invoice comparisons need supplied earlier/current text. Google authorization and real inbox actions require deployment configuration and live verification.
 
@@ -47,4 +47,6 @@ Read [deployment, authentication, OCR, storage, and release setup](docs/SETUP.md
 
 Tests use temporary private storage. They cover account separation, retention, feedback ingestion, release/rollback, failed Gmail actions, stable IMAP identifiers, preserved HTML links, job/invoice checks, and the three-step Streamlit journey.
 
-This is a local/portfolio implementation. Public production deployment requires independent scam evaluation, Google verification as applicable, secure host storage, and a transactional database for multi-process operation.
+## Deploy
+
+A single-server Docker setup with HTTPS is included: copy `.env.example` to `.env`, set `DOMAIN`, and run `docker compose up -d --build`. Read [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) first, and [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for what has and has not been verified. The container setup has not been built or run yet, storage is file-based and single-node, and Google sign-in needs your own OAuth client and Google's verification.
