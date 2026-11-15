@@ -46,3 +46,6 @@ models/previous.json
 models/versions/
 models/*.lock
 *.lock
+
+# Scratch build output (report renders)
+tmp/

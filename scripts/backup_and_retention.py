@@ -121,7 +121,7 @@ def restore_backup_archive(backup_file: Path, target_data_dir: Optional[Path] = 
                 rel_name = member.name[5:]
                 if not rel_name or ".." in rel_name:
                     continue
-                tar.extract(member, path=dest.parent)
+                tar.extract(member, path=dest.parent, filter="data")
 
     # Post-restore account deletion enforcement
     restored_users = dest / "users"

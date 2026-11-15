@@ -8,7 +8,7 @@ Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`, fill in you
 
 Google requires verification for public apps requesting restricted Gmail scopes. Read the [official scope and verification guidance](https://developers.google.com/workspace/gmail/api/auth/scopes). A local configuration template does not establish production verification or consent.
 
-The old edited Firebase project configuration is preserved in `docs/firebase-config.previous.json` as migration context. It is not executed. The old popup login and token-bearing URL redirects have been replaced.
+The earlier Firebase popup login and token-bearing URL redirects have been replaced; the old Firebase project configuration is no longer kept in the repository.
 
 ## Email-file analysis
 
