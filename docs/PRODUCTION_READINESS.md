@@ -56,7 +56,7 @@ New tests in this round (`tests/test_production_hardening.py`, `tests/test_scam_
 
 | Item | Status |
 |---|---|
-| Production database, migrations, query and index tuning | Not applicable as built: the app has no database. File storage is kept and documented as single-node only. Replacing it is a separate project. |
+| Production database, migrations, query and index tuning | Done 18 November: PostgreSQL (SQLite for development) with Alembic migrations, indexes for the review queue and expiry, daily pg_dump backups. Rate limits are still in memory. |
 | Larger, more representative training data | Not done. Only the data in `dataset/` was used; no new corpus was downloaded. This is the main limit on model quality. |
 | API endpoint verification | There are no HTTP APIs beyond Streamlit's own; the health endpoint is the only one relied on. |
 | Role-based access control | Two roles exist (user, admin by verified email). Nothing finer was added. |
@@ -86,5 +86,6 @@ Open before public launch
 - [ ] Publish a privacy policy and terms
 - [ ] Encrypt the host volume and arrange off-host backup copies
 - [ ] Add an uptime monitor on `/_stcore/health`
+- [ ] Move rate limits to Redis before running more than one app container
 - [ ] Decide whether to add a present-day email corpus and retrain
 - [ ] Have someone other than the author review the scam rules and the security changes

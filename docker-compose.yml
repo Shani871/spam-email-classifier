@@ -1,6 +1,23 @@
-# Single-node production stack: app + HTTPS reverse proxy + daily backup.
+# Single-node production stack: app + PostgreSQL + HTTPS reverse proxy + daily database backup.
 # Copy .env.example to .env, fill it in, then:  docker compose up -d --build
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: spamguard
+      POSTGRES_USER: spamguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spamguard -d spamguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
   app:
     build: .
     image: spamguard-ai:latest
@@ -10,6 +27,10 @@ services:
       SPAMGUARD_ENV: production
       SPAMGUARD_TRUST_PROXY: "1"
       SPAMGUARD_PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
+      SPAMGUARD_DATABASE_URL: postgresql+psycopg://spamguard:${POSTGRES_PASSWORD}@db:5432/spamguard
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - spamguard_state:/var/lib/spamguard
     expose:
@@ -41,22 +62,33 @@ services:
       - caddy_config:/config
 
   backup:
-    image: spamguard-ai:latest
+    image: postgres:16-alpine
     restart: unless-stopped
     depends_on:
-      - app
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: spamguard
+      PGDATABASE: spamguard
+      PGPASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - spamguard_state:/var/lib/spamguard
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    healthcheck:
-      disable: true
-    # Retention cleanup + archive of account data once a day; keeps the last 7 archives.
-    command: ["sh", "-c", "while true; do python scripts/backup_and_retention.py; sleep 86400; done"]
+      - db_backups:/backups
+    # One pg_dump a day; dumps older than 7 days are removed. Expired rows are deleted by the app every hour.
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        umask 077
+        while true; do
+          file=/backups/spamguard_$$(date -u +%Y%m%d_%H%M%S).dump
+          if pg_dump --format=custom --no-owner --file="$$file.part"; then mv "$$file.part" "$$file"; echo "backup: $$file"; else echo "backup failed" >&2; fi
+          find /backups -name 'spamguard_*' -mtime +7 -delete
+          sleep 86400
+        done
 
 volumes:
+  postgres_data:
+  db_backups:
   spamguard_state:
   caddy_data:
   caddy_config:

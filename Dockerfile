@@ -8,6 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SPAMGUARD_ENV=production \
     SPAMGUARD_STATE_DIR=/var/lib/spamguard \
     SPAMGUARD_BASELINE_MODELS=/opt/spamguard/baseline-models \
+    SPAMGUARD_DATABASE_URL=sqlite:////var/lib/spamguard/spamguard.db \
+    SPAMGUARD_BACKUP_DIR=/var/lib/spamguard/backups \
     STREAMLIT_CLIENT_SHOW_ERROR_DETAILS=none \
     STREAMLIT_CLIENT_TOOLBAR_MODE=viewer \
     MPLCONFIGDIR=/tmp/matplotlib
@@ -29,14 +31,14 @@ COPY .streamlit/config.toml .streamlit/config.toml
 COPY app_pages app_pages
 COPY assets assets
 COPY src src
+COPY migrations migrations
 COPY scripts scripts
 COPY data/detection_evaluation_set.json data/detection_evaluation_set.json
 COPY dataset/spam.csv dataset/emails.csv dataset/ham_diverse.csv dataset/
 COPY models/spam_classifier_nb.pkl models/spam_classifier_svm.pkl models/tfidf_vectorizer.pkl models/metrics.json /opt/spamguard/baseline-models/
 
 # All mutable state is on one volume; the app paths are links into it.
-RUN mkdir -p /var/lib/spamguard/users /var/lib/spamguard/logs /var/lib/spamguard/backups /var/lib/spamguard/models \
-    && ln -s /var/lib/spamguard/users data/users \
+RUN mkdir -p /var/lib/spamguard/logs /var/lib/spamguard/backups /var/lib/spamguard/models \
     && ln -s /var/lib/spamguard/logs data/logs \
     && ln -s /var/lib/spamguard/backups data/backups \
     && ln -s /var/lib/spamguard/models models \

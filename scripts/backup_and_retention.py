@@ -1,150 +1,126 @@
-"""Automated backup and retention cleanup script for SpamGuard AI.
+"""Retention clean-up, database backups and safe restores.
 
-Can be run via cron (e.g. daily at midnight) or invoked by a deployment orchestrator:
-- Enforces user retention expiration on history.json and feedback.json.
-- Creates a timestamped archive of application data (excluding logs and secrets).
-- Retains the last 7 backup archives and prunes older ones.
-- Restores archives safely while honoring user account deletion tombstones so
-  restoring an older snapshot never resurrects deleted personal data.
+    python scripts/backup_and_retention.py                 # purge expired rows, then back up
+    python scripts/backup_and_retention.py restore FILE    # restore a backup (see docs/DEPLOYMENT.md)
+    python scripts/backup_and_retention.py export-deletions FILE | reapply-deletions FILE
+
+Backups:
+  - SQLite: a consistent copy made with SQLite's online backup API (spamguard_<time>.sqlite3).
+  - PostgreSQL: `pg_dump --format=custom` (spamguard_<time>.dump); needs pg_dump on PATH.
+  The newest 7 are kept.
+
+Restores never bring back deleted accounts: the deletion markers present before the
+restore are re-applied afterwards, together with those in the backup.
 """
-
 from datetime import datetime, timezone
-import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
+import subprocess
 import sys
-import tarfile
-import tempfile
-from typing import Optional, Set
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
-USERS_DIR = DATA_DIR / "users"
-BACKUPS_DIR = DATA_DIR / "backups"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src import db, user_storage  # noqa: E402
+
+BACKUPS_DIR = Path(os.environ.get("SPAMGUARD_BACKUP_DIR", ROOT / "data" / "backups"))
+BACKUP_PREFIX = "spamguard_"
 
 
-def record_account_deletion_tombstone(digest: str, users_dir: Optional[Path] = None) -> None:
-    """Records an account deletion tombstone so restored backups never resurrect deleted data."""
-    target_users = users_dir or USERS_DIR
-    target_users.mkdir(parents=True, exist_ok=True, mode=0o700)
-    tombstone_file = target_users / ".deleted_accounts.json"
-    records = []
-    if tombstone_file.exists():
+def purge_expired_user_records() -> int:
+    """Delete expired history and feedback now. Returns the number of rows removed."""
+    return user_storage.purge_expired_records(force=True)
+
+
+def _sqlite_path(url: str) -> Path:
+    return Path(url.split("///", 1)[-1])
+
+
+def _pg_url(url: str) -> str:
+    """libpq URL for pg_dump/pg_restore (without the SQLAlchemy driver suffix)."""
+    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+def create_backup_archive(max_backups: int = 7, backups_dir: Optional[Path] = None) -> Path:
+    target = Path(backups_dir or BACKUPS_DIR)
+    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+    url = db.database_url()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    db.get_engine()  # make sure the schema exists before copying
+    if db.is_sqlite(url):
+        backup_file = target / f"{BACKUP_PREFIX}{stamp}.sqlite3"
+        source = sqlite3.connect(_sqlite_path(url))
+        destination = sqlite3.connect(backup_file)
         try:
-            records = json.loads(tombstone_file.read_text(encoding="utf-8"))
-        except Exception:
-            records = []
-    if digest not in records:
-        records.append(digest)
-        tombstone_file.write_text(json.dumps(records, indent=2), encoding="utf-8")
+            source.backup(destination)
+        finally:
+            destination.close()
+            source.close()
+    else:
+        backup_file = target / f"{BACKUP_PREFIX}{stamp}.dump"
+        subprocess.run(["pg_dump", "--format=custom", "--no-owner", f"--file={backup_file}", _pg_url(url)], check=True)
+    os.chmod(backup_file, 0o600)
 
-
-def purge_expired_user_records(users_dir: Optional[Path] = None) -> int:
-    """Purges expired records across all user stores."""
-    target_users = users_dir or USERS_DIR
-    if not target_users.exists():
-        return 0
-    now = datetime.now(timezone.utc).isoformat()
-    purged_count = 0
-
-    for path in target_users.glob("*/*.json"):
-        if path.name not in {"history.json", "feedback.json"}:
-            continue
-        try:
-            rows = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(rows, list):
-                continue
-            kept = [row for row in rows if not isinstance(row, dict) or row.get("expires_at", now) >= now]
-            if len(kept) != len(rows):
-                purged_count += len(rows) - len(kept)
-                fd, temp_file = tempfile.mkstemp(dir=path.parent)
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump(kept, handle, ensure_ascii=False, indent=2)
-                os.replace(temp_file, path)
-        except (json.JSONDecodeError, OSError):
-            continue
-
-    return purged_count
-
-
-def create_backup_archive(max_backups: int = 7, data_dir: Optional[Path] = None, backups_dir: Optional[Path] = None) -> Path:
-    """Creates a compressed archive of data/ excluding temporary files, logs, and secrets."""
-    target_data = data_dir or DATA_DIR
-    target_backups = backups_dir or BACKUPS_DIR
-    target_backups.mkdir(parents=True, exist_ok=True, mode=0o700)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-    backup_file = target_backups / f"spamguard_backup_{timestamp}.tar.gz"
-
-    with tarfile.open(backup_file, "w:gz") as tar:
-        if target_data.exists():
-            for item in target_data.iterdir():
-                if item.name in {"backups", "logs", ".DS_Store"} or item.suffix in {".tmp", ".lock"}:
-                    continue
-                # Top-level entries may be links to a state volume (container layout); archive their contents.
-                tar.add(item.resolve() if item.is_symlink() else item, arcname=f"data/{item.name}")
-
-    # Prune older backups
-    all_backups = sorted(target_backups.glob("spamguard_backup_*.tar.gz"), key=os.path.getmtime)
-    while len(all_backups) > max_backups:
-        oldest = all_backups.pop(0)
-        try:
-            oldest.unlink()
-        except OSError:
-            pass
-
+    backups = sorted(target.glob(f"{BACKUP_PREFIX}*"), key=lambda p: p.stat().st_mtime)
+    while len(backups) > max_backups:
+        backups.pop(0).unlink(missing_ok=True)
     return backup_file
 
 
-def restore_backup_archive(backup_file: Path, target_data_dir: Optional[Path] = None) -> bool:
-    """Restores application data from a backup archive with privacy guarantees.
-    
-    Privacy safeguards:
-    - Re-applies account deletion tombstones so that restoring an older backup
-      snapshot NEVER resurrects accounts deleted by users.
-    - Preserves access protection modes.
-    """
-    dest = target_data_dir or DATA_DIR
-    dest.mkdir(parents=True, exist_ok=True, mode=0o700)
-
-    # Pre-restore tombstones
-    tombstones: Set[str] = set()
-    current_tombstones = dest / "users" / ".deleted_accounts.json"
-    if current_tombstones.exists():
+def restore_backup_archive(backup_file: Path) -> bool:
+    """Replace the database contents with a backup, then re-apply all account deletions."""
+    backup_file = Path(backup_file)
+    url = db.database_url()
+    deletions_before = set(user_storage.deleted_account_ids())
+    if db.is_sqlite(url):
+        db.reset_engines()
+        source = sqlite3.connect(backup_file)
+        destination = sqlite3.connect(_sqlite_path(url))
         try:
-            tombstones.update(json.loads(current_tombstones.read_text(encoding="utf-8")))
-        except Exception:
-            pass
-
-    with tarfile.open(backup_file, "r:gz") as tar:
-        for member in tar.getmembers():
-            if member.name.startswith("data/"):
-                rel_name = member.name[5:]
-                if not rel_name or ".." in rel_name:
-                    continue
-                tar.extract(member, path=dest.parent, filter="data")
-
-    # Post-restore account deletion enforcement
-    restored_users = dest / "users"
-    if restored_users.exists():
-        restored_tombstones = restored_users / ".deleted_accounts.json"
-        if restored_tombstones.exists():
-            try:
-                tombstones.update(json.loads(restored_tombstones.read_text(encoding="utf-8")))
-            except Exception:
-                pass
-        # Ensure any deleted account in tombstone list is erased
-        for digest in tombstones:
-            acct_dir = restored_users / digest
-            if acct_dir.exists():
-                shutil.rmtree(acct_dir)
-        restored_tombstones.write_text(json.dumps(sorted(list(tombstones)), indent=2), encoding="utf-8")
-
+            source.backup(destination)
+        finally:
+            destination.close()
+            source.close()
+    else:
+        db.reset_engines()
+        subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--single-transaction",
+                        f"--dbname={_pg_url(url)}", str(backup_file)], check=True)
+    db.reset_engines()  # reconnect and apply any migrations newer than the backup
+    user_storage.apply_account_deletions(deletions_before | set(user_storage.deleted_account_ids()))
     return True
 
 
-if __name__ == "__main__":
+def export_deletions(path: Path) -> int:
+    ids = user_storage.deleted_account_ids()
+    Path(path).write_text("\n".join(ids) + ("\n" if ids else ""), encoding="utf-8")
+    return len(ids)
+
+
+def reapply_deletions(path: Path) -> int:
+    ids = [line.strip() for line in Path(path).read_text(encoding="utf-8").splitlines() if len(line.strip()) == 64]
+    return user_storage.apply_account_deletions(set(ids) | set(user_storage.deleted_account_ids()))
+
+
+def main(argv) -> None:
+    if len(argv) >= 3 and argv[1] == "export-deletions":
+        print(f"Exported {export_deletions(Path(argv[2]))} deletion markers to {argv[2]}.")
+        return
+    if len(argv) >= 3 and argv[1] == "reapply-deletions":
+        print(f"Re-applied deletions; {reapply_deletions(Path(argv[2]))} rows removed.")
+        return
+    if len(argv) >= 3 and argv[1] == "restore":
+        restore_backup_archive(Path(argv[2]))
+        print(f"Restored {argv[2]}; account deletions re-applied.")
+        return
     purged = purge_expired_user_records()
     backup_path = create_backup_archive()
-    print(f"Retention cleanup complete: {purged} expired records purged.")
-    print(f"Backup archive created: {backup_path}")
+    print(f"Retention clean-up: {purged} expired rows removed.")
+    print(f"Backup written: {backup_path}")
+
+
+if __name__ == "__main__":
+    main(sys.argv)

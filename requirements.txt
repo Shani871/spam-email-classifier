@@ -8,3 +8,6 @@ seaborn>=0.13.0,<1
 requests>=2.32.0,<3
 Pillow>=10.4.0,<12
 pytest>=8.0.0,<9
+SQLAlchemy>=2.0,<3
+alembic>=1.13,<2
+psycopg[binary]>=3.2,<4

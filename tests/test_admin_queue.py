@@ -17,24 +17,16 @@ import pytest
 from unittest.mock import Mock
 import pandas as pd
 
-from src.user_storage import user_scope, write_json, read_json, delete_account_data, ROOT
+from src.user_storage import user_scope, delete_account_data
+from src import user_storage
 import src.active_learning as learning
 
 
 def test_legacy_record_missing_consent_defaults_to_false():
     with user_scope("legacy_user"):
         learning.clear_feedback_data()
-        # Simulate legacy record without consent_given key
-        legacy_entry = {
-            "id": "legacy-001",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "text": "Legacy feedback text",
-            "predicted_label": "spam",
-            "user_label": "ham",
-            "approved": False,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
-        }
-        write_json("feedback.json", [legacy_entry])
+        # A stored correction without consent (the default, as for migrated legacy records)
+        user_storage.add_feedback("legacy-001", "Legacy feedback text", "spam", "ham")
 
         # Cannot approve legacy record without explicit consent
         with pytest.raises(ValueError, match="Cannot approve feedback without user consent"):
@@ -78,7 +70,7 @@ def test_admin_queue_across_separate_accounts():
             user_comment="Meeting notice was falsely classified as spam",
             consent_given=True
         )
-        write_json("history.json", [{"secret_history": "alice private message history"}])
+        user_storage.add_history("High risk", 91, "alice private category")
 
     # User 2: Bob submits feedback WITHOUT consent
     with user_scope("bob"):
@@ -90,7 +82,7 @@ def test_admin_queue_across_separate_accounts():
             user_comment="Private message - no consent",
             consent_given=False
         )
-        write_json("history.json", [{"secret_history": "bob confidential searches"}])
+        user_storage.add_history("High risk", 92, "bob private category")
 
     # 1. Isolation check: Alice cannot see Bob's feedback, Bob cannot see Alice's feedback
     with user_scope("alice"):
@@ -113,8 +105,8 @@ def test_admin_queue_across_separate_accounts():
 
     # 3. Privacy check: Ensure unrelated private account data is NOT exposed
     alice_queue_record = next(r for r in queue if r["id"] == alice_entry["id"])
-    assert "secret_history" not in str(alice_queue_record)
-    assert "history.json" not in str(alice_queue_record)
+    assert "private category" not in str(alice_queue_record)
+    assert user_storage.account_id("alice") not in str(alice_queue_record)
 
     # 4. Admin approval: Admin approves Alice's feedback
     learning.approve_feedback(alice_entry["id"], admin_user=admin_user)

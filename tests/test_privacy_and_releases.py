@@ -3,7 +3,8 @@ import json
 import numpy as np
 from unittest.mock import Mock
 import pandas as pd
-from src.user_storage import user_scope, write_json, read_json, delete_account_data
+from src.user_storage import user_scope, delete_account_data
+from src import user_storage
 from src.active_learning import record_feedback, get_feedback_records, approve_feedback
 from src.automation_worker import InboxAutomationWorker
 
@@ -11,10 +12,10 @@ from src.automation_worker import InboxAutomationWorker
 def test_two_users_never_share_corrections_or_rules():
     with user_scope("alice"):
         record_feedback("An ordinary project message", "spam", "ham")
-        write_json("sender_rules.json", {"whitelist": ["alice@example.com"], "blacklist": []})
+        user_storage.set_sender_rule("alice@example.com", "trust")
     with user_scope("bob"):
         assert get_feedback_records() == []
-        assert read_json("sender_rules.json", {}) == {}
+        assert user_storage.get_sender_rules() == {"whitelist": [], "blacklist": []}
         record_feedback("Another project message", "spam", "ham")
     with user_scope("alice"):
         assert get_feedback_records()[0]["text"] == "An ordinary project message"
@@ -25,9 +26,8 @@ def test_two_users_never_share_corrections_or_rules():
 
 
 def test_expired_content_removed():
-    old = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
-    write_json("history.json", [{"expires_at": old, "assessment": "High risk"}])
-    assert read_json("history.json", []) == []
+    user_storage.add_history("High risk", 90, "General message", retention_days=0)
+    assert user_storage.list_history() == []
 
 
 def test_workers_have_separate_credentials_and_actual_actions(monkeypatch):

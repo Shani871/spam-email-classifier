@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 import streamlit as st
-from src.user_storage import read_json, update_json
+from src import user_storage
 from src.scam_assistant import check_message
 from src.i18n import t
 
@@ -82,10 +82,8 @@ def analyze(text, **kwargs):
     except Exception as err:
         log_error(err, context="analyze_monitoring")
     if st.session_state.get("save_history"):
-        now = datetime.now(timezone.utc)
-        entry = {"timestamp": now.isoformat(), "assessment": result["assessment"], "score": result["score"],
-                 "category": result["category"], "expires_at": (now + timedelta(days=st.session_state.get("retention_days", 7))).isoformat()}
-        update_json("history.json", [], lambda rows: (rows + [entry])[-100:])
+        user_storage.add_history(result["assessment"], result["score"], result["category"],
+                                 retention_days=st.session_state.get("retention_days", 7))
     return result
 
 

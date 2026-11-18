@@ -34,7 +34,7 @@ Models are shared across accounts; releasing them requires explicit administrato
 
 Message/image checks run on the app server. No external AI calls are made in the primary flow. Submitted content is held in the private Streamlit session by default. Optional saved summaries exclude message bodies and sender details, expire after 1/7/30 days, and retain at most 100 entries. Corrections expire after 30 days. Expired account records are pruned on access and by hourly cleanup while the app receives requests; schedule `scripts/purge_private_data.py` externally if exact cleanup while idle is required. Deletion removes the current account's saved rules, corrections, summaries, and clears session content and connection details. Account folders use hashed verified OIDC identities; anonymous users receive separate random session identities. Guests cannot recover saved records after the session ends.
 
-Storage writes are atomic with a process-level lock. Deploy as a single app process on a persistent volume. Multi-process/distributed deployments need a transactional database and coordinated model-release locks. There is no encryption-at-rest service in this local implementation; use encrypted host storage and access controls in production.
+Account data is stored in a database: PostgreSQL in production (set `SPAMGUARD_DATABASE_URL`), or a local SQLite file (`data/spamguard.db`) by default. Migrations run automatically at start-up. Rate limits and model-release locks are still per host; see docs/DEPLOYMENT.md before running several app processes. There is no encryption at rest in the app; use encrypted host storage and access controls in production.
 
 ## Monitoring and inbox actions
 
