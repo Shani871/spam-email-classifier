@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: spamguard
           POSTGRES_PASSWORD: spamguard
@@ -38,10 +38,20 @@ jobs:
       - name: Run tests (SQLite)
         run: python -m pytest tests -q --tb=short
 
+      - name: Install PostgreSQL 17 client tools (same major version as the test server)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
       - name: Run tests (PostgreSQL)
         env:
           SPAMGUARD_TEST_DATABASE_URL: postgresql+psycopg://spamguard:spamguard@localhost:5432/spamguard_test
-        run: python -m pytest tests -q --tb=short
+        run: |
+          pg_dump --version
+          python -m pytest tests -q --tb=short
 
   container:
     runs-on: ubuntu-latest
@@ -75,7 +85,7 @@ jobs:
       - name: Runs against PostgreSQL, migrates, stores and backs up data
         run: |
           docker network create spamguard-ci
-          docker run -d --name pg --network spamguard-ci -e POSTGRES_USER=spamguard -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=spamguard postgres:16-alpine
+          docker run -d --name pg --network spamguard-ci -e POSTGRES_USER=spamguard -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=spamguard postgres:17-alpine
           for i in $(seq 1 30); do docker exec pg pg_isready -U spamguard -d spamguard && break; sleep 2; done
           docker run -d --name app-pg --network spamguard-ci \
             -e SPAMGUARD_DATABASE_URL=postgresql+psycopg://spamguard:ci@pg:5432/spamguard spamguard-ai:ci

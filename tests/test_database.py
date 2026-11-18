@@ -152,3 +152,24 @@ def test_migrating_old_json_storage_is_complete_and_idempotent(tmp_path):
     assert [r["id"] for r in learning.get_trainable_feedback()] == ["f1"]
     with user_scope("gone"):
         assert user_storage.list_history() == []
+
+
+def test_backup_refuses_mismatched_postgres_tools(monkeypatch):
+    import subprocess
+    backup = load_script("backup_and_retention")
+    monkeypatch.setattr(backup.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="pg_restore (PostgreSQL) 17.2\n"))
+
+    class FakeConnection:
+        def __enter__(self): return self
+        def __exit__(self, *exc): return False
+        def execute(self, *_):
+            class Result:
+                def scalar_one(self): return "160004"
+            return Result()
+
+    class FakeEngine:
+        def connect(self): return FakeConnection()
+
+    monkeypatch.setattr(backup.db, "get_engine", lambda: FakeEngine())
+    with pytest.raises(RuntimeError, match="pg_restore is version 17 but the database server is PostgreSQL 16"):
+        backup.check_pg_tool_version("pg_restore")

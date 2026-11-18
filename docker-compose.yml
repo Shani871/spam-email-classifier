@@ -7,7 +7,7 @@ secrets:
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: spamguard
@@ -74,7 +74,7 @@ services:
       - caddy_config:/config
 
   backup:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     depends_on:
       db:

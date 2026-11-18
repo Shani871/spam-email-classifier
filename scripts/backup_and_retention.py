@@ -6,7 +6,8 @@
 
 Backups:
   - SQLite: a consistent copy made with SQLite's online backup API (spamguard_<time>.sqlite3).
-  - PostgreSQL: `pg_dump --format=custom` (spamguard_<time>.dump); needs pg_dump on PATH.
+  - PostgreSQL: `pg_dump --format=custom` (spamguard_<time>.dump); needs pg_dump/pg_restore of the
+    same major version as the server on PATH (checked before running).
   The newest 7 are kept.
 
 Restores never bring back deleted accounts: the deletion markers present before the
@@ -45,6 +46,26 @@ def _pg_url(url: str) -> str:
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
 
 
+def check_pg_tool_version(tool: str) -> None:
+    """Stop with a clear message if pg_dump/pg_restore and the server differ in major version.
+
+    Dumps from newer tools can contain settings an older server rejects (for example
+    pg_dump 17 writes `SET transaction_timeout`, which PostgreSQL 16 does not know).
+    """
+    import re
+    from sqlalchemy import text
+    output = subprocess.run([tool, "--version"], check=True, capture_output=True, text=True).stdout
+    found = re.search(r"(\d+)(?:\.\d+)?", output)
+    if not found:
+        raise RuntimeError(f"Could not read the version of {tool}: {output.strip()}")
+    client_major = int(found.group(1))
+    with db.get_engine().connect() as connection:
+        server_major = int(connection.execute(text("SHOW server_version_num")).scalar_one()) // 10000
+    if client_major != server_major:
+        raise RuntimeError(f"{tool} is version {client_major} but the database server is PostgreSQL {server_major}. "
+                           f"Use {tool} {server_major}, for example by running it inside the database container.")
+
+
 def create_backup_archive(max_backups: int = 7, backups_dir: Optional[Path] = None) -> Path:
     target = Path(backups_dir or BACKUPS_DIR)
     target.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -62,6 +83,7 @@ def create_backup_archive(max_backups: int = 7, backups_dir: Optional[Path] = No
             source.close()
     else:
         backup_file = target / f"{BACKUP_PREFIX}{stamp}.dump"
+        check_pg_tool_version("pg_dump")
         subprocess.run(["pg_dump", "--format=custom", "--no-owner", f"--file={backup_file}", _pg_url(url)], check=True)
     os.chmod(backup_file, 0o600)
 
@@ -86,6 +108,7 @@ def restore_backup_archive(backup_file: Path) -> bool:
             destination.close()
             source.close()
     else:
+        check_pg_tool_version("pg_restore")
         db.reset_engines()
         subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--single-transaction",
                         f"--dbname={_pg_url(url)}", str(backup_file)], check=True)

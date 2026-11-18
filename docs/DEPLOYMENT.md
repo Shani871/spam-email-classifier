@@ -7,7 +7,7 @@ This describes the single-server deployment shipped in this repository: the app 
 ```
 Internet ──443──> Caddy (TLS, security headers, 12 MB body limit)
                     └──> app:8501  Streamlit, non-root
-                            ├──> db:5432  PostgreSQL 16 (volume postgres_data)
+                            ├──> db:5432  PostgreSQL 17 (volume postgres_data)
                             │      history, feedback, sender_rules, deleted_accounts
                             └──> /var/lib/spamguard  (volume)
                                    logs/     scrubbed audit log, rotated at 5 MB
@@ -130,6 +130,8 @@ docker compose cp ./deletions.txt app:/tmp/deletions.txt
 docker compose exec app python scripts/backup_and_retention.py reapply-deletions /tmp/deletions.txt
 ```
 
+`pg_dump` and `pg_restore` must have the same major version as the server; the commands above run them inside the `db` container, which guarantees that. The backup script checks it and stops with a clear message otherwise.
+
 With SQLite (no Compose database), `python scripts/backup_and_retention.py` makes a consistent copy and `python scripts/backup_and_retention.py restore FILE` restores it and re-applies deletions in one step.
 
 Models and logs are on the `spamguard_state` volume, not in the database dumps; snapshot that volume if you need them. Encrypt the host disk at rest; neither the app nor PostgreSQL encrypts its files.
@@ -176,6 +178,6 @@ Tested on the development machine: the application, the test suite on SQLite, th
 
 Tested in GitHub Actions (commit `b596d72`): the image builds, the app container reaches a healthy state, a prediction runs inside it, and it refuses to start with a weak cookie secret. The `container` job in `.github/workflows/tests.yml` repeats this on every push.
 
-The `test` job also runs the whole suite against PostgreSQL 16, and the `container` job starts the image against a PostgreSQL container, checks the migration, stores data and dumps it with `pg_dump`.
+The `test` job also runs the whole suite against PostgreSQL 17, and the `container` job starts the image against a PostgreSQL container, checks the migration, stores data and dumps it with `pg_dump`.
 
 Not run anywhere yet: `docker compose up` with Caddy and the backup service, certificate issuance, a full pg_dump restore through the documented steps, and Google sign-in against a real OAuth client, because no server, domain or credentials were available.
