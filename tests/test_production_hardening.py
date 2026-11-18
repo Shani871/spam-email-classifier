@@ -118,19 +118,6 @@ def test_markdown_in_email_fields_is_neutralised():
     assert escaped.count("\\") >= 8
 
 
-def test_backup_archives_contents_of_linked_state_directories(tmp_path):
-    backup = load_script("backup_and_retention")
-    state = tmp_path / "state" / "users" / "abc"
-    state.mkdir(parents=True)
-    (state / "history.json").write_text("[]", encoding="utf-8")
-    data = tmp_path / "data"
-    data.mkdir()
-    (data / "users").symlink_to(tmp_path / "state" / "users")
-    archive = backup.create_backup_archive(data_dir=data, backups_dir=tmp_path / "backups")
-    with tarfile.open(archive) as tar:
-        assert "data/users/abc/history.json" in tar.getnames()
-
-
 def test_word_count_reconstructions_are_detected_but_messages_are_not():
     from src.train import is_bow_reconstruction
     assert is_bow_reconstruction("the the the the to to to ect ect and for for of a a a a in in on is i i i be will")

@@ -17,62 +17,27 @@ if PROJECT_ROOT not in sys.path:
 
 
 
-from src.user_storage import read_json, write_json
+from src import user_storage
 
 
 def get_sender_rules() -> Dict[str, List[str]]:
-    return read_json("sender_rules.json", {"whitelist": [], "blacklist": []})
-
-
-def save_sender_rules(rules: Dict[str, List[str]]):
-    write_json("sender_rules.json", rules)
+    """{"whitelist": [...], "blacklist": [...]} for the current account."""
+    return user_storage.get_sender_rules()
 
 
 def add_to_whitelist(sender_or_domain: str) -> bool:
-    """Adds a sender email or domain to the whitelist."""
-    clean = sender_or_domain.lower().strip()
-    if not clean:
-        return False
-
-    rules = get_sender_rules()
-    if clean in rules["blacklist"]:
-        rules["blacklist"].remove(clean)
-    if clean not in rules["whitelist"]:
-        rules["whitelist"].append(clean)
-        save_sender_rules(rules)
-    return True
+    """Trust a sender email or domain (replaces a block rule for it)."""
+    return user_storage.set_sender_rule(sender_or_domain, "trust")
 
 
 def add_to_blacklist(sender_or_domain: str) -> bool:
-    """Adds a sender email or domain to the blacklist."""
-    clean = sender_or_domain.lower().strip()
-    if not clean:
-        return False
-
-    rules = get_sender_rules()
-    if clean in rules["whitelist"]:
-        rules["whitelist"].remove(clean)
-    if clean not in rules["blacklist"]:
-        rules["blacklist"].append(clean)
-        save_sender_rules(rules)
-    return True
+    """Block a sender email or domain (replaces a trust rule for it)."""
+    return user_storage.set_sender_rule(sender_or_domain, "block")
 
 
 def remove_sender_rule(sender_or_domain: str) -> bool:
-    """Removes a sender email or domain from all lists."""
-    clean = sender_or_domain.lower().strip()
-    rules = get_sender_rules()
-    changed = False
-    if clean in rules["whitelist"]:
-        rules["whitelist"].remove(clean)
-        changed = True
-    if clean in rules["blacklist"]:
-        rules["blacklist"].remove(clean)
-        changed = True
-
-    if changed:
-        save_sender_rules(rules)
-    return changed
+    """Remove any rule for a sender email or domain."""
+    return user_storage.set_sender_rule(sender_or_domain, None)
 
 
 def check_sender_reputation(sender: str) -> str:

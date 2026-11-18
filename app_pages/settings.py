@@ -1,6 +1,6 @@
 import streamlit as st
 from src.ui_shared import auth_configured, gmail_token, connect_inbox, md_escape
-from src.user_storage import delete_account_data, read_json, update_json
+from src.user_storage import delete_account_data, list_history
 from src.gmail_actions import get_sender_rules, add_to_whitelist, add_to_blacklist, remove_sender_rule
 from src.gmail_scanner import resolve_imap_settings
 from src.i18n import t
@@ -133,7 +133,7 @@ st.toggle(t("Keep a history of my results"), key="_save_history", on_change=save
 st.segmented_control(t("Keep history for"), [1, 7, 30], key="_retention_days", format_func=lambda d: t("1 day") if d == 1 else t("{days} days", days=d),
                      on_change=save_privacy_preferences)
 if st.session_state.save_history:
-    history = read_json("history.json", [])
+    history = list_history()
     if history:
         st.dataframe(history, hide_index=True, column_order=["timestamp", "assessment", "score", "category"])
     else:

@@ -1,25 +1,47 @@
 # Deployment and maintenance
 
-This describes the single-server deployment shipped in this repository: the app in a container, Caddy in front for HTTPS, and one volume for all state. Status of each part is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md); the image builds and starts in CI, but the full stack has not been run on a server (see "Verification status" below).
+This describes the single-server deployment shipped in this repository: the app in a container, PostgreSQL for account data, and Caddy in front for HTTPS. Status of each part is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md); the image builds and starts in CI, but the full stack has not been run on a server (see "Verification status" below).
 
 ## Architecture
 
 ```
 Internet ──443──> Caddy (TLS, security headers, 12 MB body limit)
-                    └──> app:8501  Streamlit, non-root, one process
+                    └──> app:8501  Streamlit, non-root
+                            ├──> db:5432  PostgreSQL 17 (volume postgres_data)
+                            │      history, feedback, sender_rules, deleted_accounts
                             └──> /var/lib/spamguard  (volume)
-                                   users/    account-scoped JSON, hashed directory names
                                    logs/     scrubbed audit log, rotated at 5 MB
-                                   backups/  daily archives, last 7 kept
                                    models/   baseline + released versions + active.json
-backup container: retention cleanup + archive every 24 h, same volume
+backup container: pg_dump once a day into volume db_backups, 7 days kept
 ```
 
-There is no database server. Account data is JSON files written atomically under file locks (`src/user_storage.py`). That is safe for one app container on one host. Do not run several app replicas or put the volume on a network share: rate limits and session state are per process, and file locks are not reliable across hosts. Moving to several nodes needs a real database first; that work is not done.
+### Data storage
+
+Account data lives in the database (`src/db.py`, `src/user_storage.py`):
+
+| Table | Holds | Kept for |
+|---|---|---|
+| `history` | Result summaries (assessment, score, category, time), only if the person turns history on | 1, 7 or 30 days, as chosen; last 100 per account |
+| `feedback` | Corrections people send, with their consent flag and review status | 30 days |
+| `sender_rules` | Trusted and blocked addresses per account | Until removed |
+| `deleted_accounts` | Hashes of deleted accounts, so restores don't bring them back | Permanent |
+
+Accounts appear only as a SHA-256 hash of the sign-in identity or a random guest id. Message text from checks, passwords and tokens are never stored.
+
+The schema is managed by Alembic migrations in `migrations/`. They run automatically when the app starts (the container waits up to a minute for the database), and a PostgreSQL advisory lock stops two starting processes from migrating at the same time. To change the schema, add a new file under `migrations/versions/`; never edit an applied one.
+
+`SPAMGUARD_DATABASE_URL` selects the database. Docker Compose sets it to the `db` service. Without it, the app uses a SQLite file (`data/spamguard.db` locally, `/var/lib/spamguard/spamguard.db` in the container), which is fine for development or a single small instance.
+
+### Scaling
+
+Account data is now safe with several app containers sharing one PostgreSQL database. Three things are still per process and would need work before running replicas behind a load balancer:
+- **Rate limits** are kept in memory (`src/rate_limit.py`), so each replica counts separately. Moving them to Redis is the next step.
+- **Streamlit sessions** live in the process; the load balancer must use sticky sessions.
+- **Model releases** use a file lock on the `models/` volume, which must be shared storage, or releases should be done on one node and redeployed.
 
 ## First deployment
 
-Requirements: a Linux host with Docker Engine and the Compose plugin, 2 GB RAM, ports 80 and 443 open, and a DNS record for your domain pointing at the host.
+Requirements: a Linux host with Docker Engine and the Compose plugin (2.23 or newer, for secrets read from `.env`), 2 GB RAM, ports 80 and 443 open, and a DNS record for your domain pointing at the host.
 
 ```sh
 git clone <repository-url> spamguard && cd spamguard
@@ -31,6 +53,7 @@ Edit `.env`:
 | Variable | Required | Purpose |
 |---|---|---|
 | `DOMAIN` | yes | Public host name; Caddy obtains the certificate for it |
+| `POSTGRES_PASSWORD` | yes | Database password: `openssl rand -hex 24`. Compose hands it to the containers as a secret file (`/run/secrets/db_password`), so it never appears in their environment or in a URL |
 | `ACME_EMAIL` | no | Let's Encrypt contact address |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for sign-in | Google OAuth client; leave both empty for guest-only mode |
 | `SPAMGUARD_COOKIE_SECRET` | with sign-in | Random, 32+ characters: `openssl rand -hex 32` |
@@ -86,23 +109,43 @@ Not covered: there is no web application firewall, no malware scanning of attach
 
 ## Backups and restore
 
-The `backup` service runs `scripts/backup_and_retention.py` once a day: it deletes expired history and feedback, then writes `backups/spamguard_backup_<timestamp>.tar.gz` and keeps the last seven. Archives contain account data only; released model versions are on the same volume but not inside the archives.
+The `backup` service runs `pg_dump` once a day into the `db_backups` volume (`spamguard_<time>.dump`) and removes dumps older than 7 days. The app itself deletes expired history and feedback every hour.
 
-Copy archives off the host; a backup on the same disk does not survive losing the disk:
+Copy dumps off the host; a backup on the same disk does not survive losing the disk:
 
 ```sh
-docker compose cp backup:/var/lib/spamguard/backups ./offsite-backups
+docker compose cp backup:/backups ./offsite-backups
 ```
 
-Restore (accounts deleted since the backup stay deleted, via tombstones):
+Restore. A restore must not bring back accounts deleted after the backup was taken, so their deletion markers are saved first and re-applied afterwards:
 
 ```sh
+docker compose exec app python scripts/backup_and_retention.py export-deletions /tmp/deletions.txt
+docker compose cp app:/tmp/deletions.txt ./deletions.txt
 docker compose stop app
-docker compose run --rm backup python -c "from pathlib import Path; from scripts.backup_and_retention import restore_backup_archive; restore_backup_archive(Path('/var/lib/spamguard/backups/<file>.tar.gz'))"
+docker compose cp ./offsite-backups/spamguard_<time>.dump db:/tmp/restore.dump
+docker compose exec db pg_restore --clean --if-exists --no-owner --single-transaction -U spamguard -d spamguard /tmp/restore.dump
 docker compose start app
+docker compose cp ./deletions.txt app:/tmp/deletions.txt
+docker compose exec app python scripts/backup_and_retention.py reapply-deletions /tmp/deletions.txt
 ```
 
-To capture everything including models, snapshot the `spamguard_state` volume. Encrypt the host disk or volume at rest; the app does not encrypt its files.
+`pg_dump` and `pg_restore` must have the same major version as the server; the commands above run them inside the `db` container, which guarantees that. The backup script checks it and stops with a clear message otherwise.
+
+With SQLite (no Compose database), `python scripts/backup_and_retention.py` makes a consistent copy and `python scripts/backup_and_retention.py restore FILE` restores it and re-applies deletions in one step.
+
+Models and logs are on the `spamguard_state` volume, not in the database dumps; snapshot that volume if you need them. Encrypt the host disk at rest; neither the app nor PostgreSQL encrypts its files.
+
+### Moving from the old JSON storage
+
+Earlier versions kept account data as JSON files under `data/users/`. To copy them into the database once:
+
+```sh
+python scripts/migrate_json_to_db.py --dry-run     # shows what would be copied
+python scripts/migrate_json_to_db.py
+```
+
+It is safe to run twice, skips accounts that were deleted, and leaves the JSON files in place for you to delete after checking.
 
 ## Updating
 
@@ -127,12 +170,14 @@ python3.12 -m venv .venv
 .venv/bin/python -m streamlit run app.py --server.address 127.0.0.1
 ```
 
-Put any HTTPS reverse proxy in front, set `SPAMGUARD_ENV=production` and `SPAMGUARD_TRUST_PROXY=1`, and schedule `scripts/backup_and_retention.py` daily. For screenshot and QR checks install `requirements-images.txt` and Tesseract.
+Put any HTTPS reverse proxy in front, set `SPAMGUARD_ENV=production`, `SPAMGUARD_TRUST_PROXY=1` and `SPAMGUARD_DATABASE_URL` (for example `postgresql+psycopg://user:password@localhost:5432/spamguard`), and schedule `scripts/backup_and_retention.py` daily (it needs `pg_dump` on the path for PostgreSQL). For screenshot and QR checks install `requirements-images.txt` and Tesseract.
 
 ## Verification status
 
-Tested on the development machine: the application, the test suite, the start-up configuration logic, and the backup of linked state directories.
+Tested on the development machine: the application, the test suite on SQLite, the start-up configuration logic, SQLite backup and restore, and the JSON-to-database migration.
 
 Tested in GitHub Actions (commit `b596d72`): the image builds, the app container reaches a healthy state, a prediction runs inside it, and it refuses to start with a weak cookie secret. The `container` job in `.github/workflows/tests.yml` repeats this on every push.
 
-Not run anywhere yet: `docker compose up` with Caddy, certificate issuance, the backup container, and Google sign-in against a real OAuth client, because no server, domain or credentials were available.
+The `test` job also runs the whole suite against PostgreSQL 17, and the `container` job starts the image against a PostgreSQL container, checks the migration, stores data and dumps it with `pg_dump`.
+
+Not run anywhere yet: `docker compose up` with Caddy and the backup service, certificate issuance, a full pg_dump restore through the documented steps, and Google sign-in against a real OAuth client, because no server, domain or credentials were available.

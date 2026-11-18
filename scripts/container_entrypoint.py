@@ -72,13 +72,36 @@ def render_secrets(env) -> str:
 
 
 def prepare_state(app_root: Path, state_dir: Path, baseline_dir: Path) -> None:
-    for name in ("users", "logs", "backups", "models"):
+    for name in ("logs", "backups", "models"):
         (state_dir / name).mkdir(parents=True, exist_ok=True, mode=0o700)
     if baseline_dir.is_dir():
         for name in BASELINE_FILES:
             source = baseline_dir / name
             if source.exists():
                 shutil.copy2(source, state_dir / "models" / name)
+
+
+def redact_url(url: str) -> str:
+    """Hide the password in a database URL for log messages."""
+    import re
+    return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", url)
+
+
+def prepare_database(attempts: int = 30, delay: float = 2.0) -> None:
+    """Wait for the database and apply migrations, or exit with a clear message."""
+    import time
+    from src import db
+    last_error = None
+    for _ in range(attempts):
+        try:
+            db.get_engine()
+            print(f"Database ready: {redact_url(db.database_url())}", flush=True)
+            return
+        except Exception as error:  # noqa: BLE001 - report any connection or migration failure
+            last_error = error
+            db.reset_engines()
+            time.sleep(delay)
+    sys.exit(f"Database not available at {redact_url(db.database_url())}: {type(last_error).__name__}")
 
 
 def main() -> None:
@@ -105,6 +128,9 @@ def main() -> None:
         sys.exit("Configuration error: SPAMGUARD_LOCAL_ADMIN must not be set in production.")
 
     os.chdir(app_root)
+    if str(app_root) not in sys.path:
+        sys.path.insert(0, str(app_root))
+    prepare_database()
     os.execvp(sys.executable, [sys.executable, "-m", "streamlit", "run", "app.py",
                                "--server.port", os.environ.get("PORT", "8501"), "--server.address", "0.0.0.0"])
 

@@ -4,7 +4,8 @@ import json
 import pytest
 from src.monitoring import scrub_sensitive_data, log_security_event, log_error, get_monitoring_metrics
 from scripts.backup_and_retention import purge_expired_user_records, create_backup_archive
-from src.user_storage import user_scope, write_json, read_json
+from src.user_storage import user_scope
+from src import user_storage
 
 
 def test_scrub_sensitive_data():
@@ -36,85 +37,53 @@ def test_monitoring_metrics_and_error_logging():
     assert updated == initial + 1
 
 
-def test_retention_purge(tmp_path, monkeypatch):
+def test_retention_purge():
+    from datetime import datetime, timedelta, timezone
+    user_storage.add_history("High risk", 90, "General message", retention_days=7)
+    user_storage.add_feedback("old", "old text", "spam", "ham", created_at=datetime.now(timezone.utc) - timedelta(days=40),
+                              expires_at=datetime.now(timezone.utc) - timedelta(days=10))
+    user_storage.add_feedback("new", "new text", "spam", "ham")
+    assert purge_expired_user_records() == 1
+    assert [r["id"] for r in user_storage.list_feedback()] == ["new"]
+    assert len(user_storage.list_history()) == 1
+
+
+def test_backup_archive_creation(tmp_path):
+    user_storage.add_history("High risk", 90, "General message")
+    for _ in range(3):
+        archive = create_backup_archive(max_backups=2, backups_dir=tmp_path / "backups")
+    assert archive.exists() and archive.suffix in {".sqlite3", ".dump"}
+    assert len(list((tmp_path / "backups").iterdir())) == 2
+    assert oct(archive.stat().st_mode & 0o777) == "0o600"
+
+
+def test_backup_restoration_and_deleted_account_protection(tmp_path):
     import scripts.backup_and_retention as br
-    users_dir = tmp_path / "users"
-    user_folder = users_dir / "user_abc"
-    user_folder.mkdir(parents=True)
-    monkeypatch.setattr(br, "USERS_DIR", users_dir)
+    with user_scope("user_alice"):
+        user_storage.add_history("High risk", 80, "General message")
+        user_storage.set_sender_rule("alice@example.com", "trust")
+    with user_scope("user_bob"):
+        user_storage.add_history("Needs verification", 50, "General message")
+    archive = br.create_backup_archive(max_backups=5, backups_dir=tmp_path / "backups")
 
-    now = datetime.now(timezone.utc)
-    expired_entry = {"id": "1", "expires_at": (now - timedelta(days=2)).isoformat(), "data": "old"}
-    valid_entry = {"id": "2", "expires_at": (now + timedelta(days=5)).isoformat(), "data": "valid"}
+    # Alice deletes her account after the backup was taken; Bob's data is then lost.
+    with user_scope("user_alice"):
+        user_storage.delete_account_data()
+    with user_scope("user_bob"):
+        user_storage.delete_account_data()
+    from src import db
+    from sqlalchemy import delete
+    with db.get_engine().begin() as connection:  # simulate losing Bob's deletion marker: this was a disaster, not his choice
+        connection.execute(delete(db.deleted_accounts).where(db.deleted_accounts.c.account_id == user_storage.account_id("user_bob")))
 
-    history_path = user_folder / "history.json"
-    history_path.write_text(json.dumps([expired_entry, valid_entry]))
+    assert br.restore_backup_archive(archive)
 
-    purged = purge_expired_user_records()
-    assert purged == 1
-
-    remaining = json.loads(history_path.read_text())
-    assert len(remaining) == 1
-    assert remaining[0]["id"] == "2"
-
-
-def test_backup_archive_creation(tmp_path, monkeypatch):
-    import scripts.backup_and_retention as br
-    data_dir = tmp_path / "data"
-    backups_dir = data_dir / "backups"
-    data_dir.mkdir(parents=True)
-    (data_dir / "sample.txt").write_text("sample content")
-
-    monkeypatch.setattr(br, "DATA_DIR", data_dir)
-    monkeypatch.setattr(br, "BACKUPS_DIR", backups_dir)
-
-    archive = create_backup_archive(max_backups=2)
-    assert archive.exists()
-    assert archive.name.endswith(".tar.gz")
-
-
-def test_backup_restoration_and_deleted_account_protection(tmp_path, monkeypatch):
-    import scripts.backup_and_retention as br
-    import hashlib
-    data_dir = tmp_path / "data"
-    users_dir = data_dir / "users"
-    backups_dir = data_dir / "backups"
-    data_dir.mkdir(parents=True)
-    users_dir.mkdir(parents=True)
-
-    monkeypatch.setattr(br, "DATA_DIR", data_dir)
-    monkeypatch.setattr(br, "USERS_DIR", users_dir)
-    monkeypatch.setattr(br, "BACKUPS_DIR", backups_dir)
-
-    digest_a = hashlib.sha256("user_alice".encode()).hexdigest()
-    digest_b = hashlib.sha256("user_bob".encode()).hexdigest()
-
-    (users_dir / digest_a).mkdir()
-    (users_dir / digest_a / "history.json").write_text(json.dumps([{"query": "alice message"}]))
-
-    (users_dir / digest_b).mkdir()
-    (users_dir / digest_b / "history.json").write_text(json.dumps([{"query": "bob message"}]))
-
-    # Create backup archive containing both accounts
-    archive = br.create_backup_archive(max_backups=5)
-    assert archive.exists()
-
-    # Alice deletes her account
-    br.record_account_deletion_tombstone(digest_a, users_dir=users_dir)
-    import shutil
-    shutil.rmtree(users_dir / digest_a)
-
-    # Bob's account is also wiped to simulate disaster recovery restore
-    shutil.rmtree(users_dir / digest_b)
-
-    # Restore the backup archive
-    assert br.restore_backup_archive(archive, target_data_dir=data_dir)
-
-    # Bob's account must be restored
-    assert (users_dir / digest_b / "history.json").exists()
-
-    # Alice's account was deleted and MUST NOT be resurrected!
-    assert not (users_dir / digest_a).exists()
+    with user_scope("user_bob"):
+        assert len(user_storage.list_history()) == 1
+    with user_scope("user_alice"):
+        assert user_storage.list_history() == []
+        assert user_storage.get_sender_rules() == {"whitelist": [], "blacklist": []}
+    assert user_storage.account_id("user_alice") in user_storage.deleted_account_ids()
 
 
 def test_app_pages_importable():

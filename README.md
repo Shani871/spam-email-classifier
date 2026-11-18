@@ -23,7 +23,7 @@ For screenshot/QR support, install `requirements-images.txt`. macOS can use Appl
 ## Privacy and reliability
 
 - Message checks run on the app server; no external AI service receives message contents by default.
-- Credentials and private runtime data are scoped to the session; saved data is scoped to a verified account or a random guest session.
+- Credentials and private runtime data are scoped to the session; saved data is stored in the database under a hash of a verified account or a random guest session.
 - Optional saved summaries exclude message bodies; corrections require consent and review.
 - Secure Google sign-in uses an OIDC callback. Gmail tokens never appear in page URLs.
 - Monitoring recommends actions without claiming emails were moved. Demo/live feeds are distinguished.
@@ -49,4 +49,4 @@ Tests use temporary private storage. They cover account separation, retention, f
 
 ## Deploy
 
-A single-server Docker setup with HTTPS is included: copy `.env.example` to `.env`, set `DOMAIN`, and run `docker compose up -d --build`. Read [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) first, and [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for what has and has not been verified. The image builds and starts in CI, but the full stack has not been run on a server; storage is file-based and single-node, and Google sign-in needs your own OAuth client and Google's verification.
+A single-server Docker setup with HTTPS is included: copy `.env.example` to `.env`, set `DOMAIN`, and run `docker compose up -d --build`. Read [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) first, and [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for what has and has not been verified. The image builds and starts in CI, but the full stack has not been run on a server; account data is stored in PostgreSQL (SQLite when running locally), and Google sign-in needs your own OAuth client and Google's verification.

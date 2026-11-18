@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from src import user_storage
-from src.user_storage import read_json, write_json, update_json, file_lock
+from src.user_storage import file_lock
 from src.preprocessing import clean_text
 
 MODELS_DIR = Path(__file__).resolve().parents[1] / "models"
@@ -70,202 +70,85 @@ def record_feedback(
     approved: bool = False,
     consent_given: bool = False
 ) -> Dict[str, Any]:
-    """Records user feedback.
-    
-    CRITICAL: consent_given defaults to False to ensure strict user consent.
+    """Records a correction for the current account.
+
+    consent_given defaults to False: without consent a correction stays private to its
+    author and never reaches the review queue or training.
     """
     if not text.strip():
         raise ValueError("Cannot record feedback for empty text.")
     label = user_label.lower().strip()
     if label not in {"spam", "ham"}:
         raise ValueError("User label must be ham or spam.")
-    
-    entry = {
-        "id": uuid.uuid4().hex,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "text": redact_personal_data(text.strip()),
-        "predicted_label": predicted_label.lower(),
-        "user_label": label,
-        "user_comment": redact_personal_data(user_comment.strip()),
-        "consent_given": bool(consent_given),
-        "approved": bool(approved),
-        "rejected": False,
-        "status": "approved" if approved else "pending",
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-    }
-    update_json("feedback.json", [], lambda rows: rows + [entry])
-    return entry
+    return user_storage.add_feedback(
+        entry_id=uuid.uuid4().hex,
+        text=redact_personal_data(text.strip()),
+        predicted_label=predicted_label.lower(),
+        user_label=label,
+        user_comment=redact_personal_data(user_comment.strip()),
+        consent_given=bool(consent_given),
+        status="approved" if approved and consent_given else "pending",
+    )
 
 
 def get_feedback_records(limit: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Gets feedback records for the CURRENT account scope only."""
-    rows = list(reversed(read_json("feedback.json", [])))
+    """Corrections from the CURRENT account only, newest first."""
+    rows = user_storage.list_feedback()
     return rows[:limit] if limit else rows
 
 
 def get_admin_feedback_queue(admin_user: Any = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Allows authorized administrators to review submissions from other users.
-    
-    CRITICAL PRIVACY GUARANTEES:
-    - Only submissions where the user explicitly gave consent are returned.
-    - Missing consent defaults to False (legacy records without consent are excluded).
-    - Unrelated private account data (history, rules, credentials) is NEVER exposed.
+    """Corrections from all accounts, for administrators.
+
+    Only corrections with explicit consent are returned, and only their own fields:
+    no account identifier, history or rules.
     """
     if not is_authorized_admin(admin_user):
         raise PermissionError("Administrator authorization required to view the feedback review queue.")
-
-    records = []
-    seen_ids = set()
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Search all account directories
-    if user_storage.ROOT.exists():
-        for fb_path in user_storage.ROOT.glob("*/feedback.json"):
-            try:
-                data = json.loads(fb_path.read_text(encoding="utf-8"))
-                if not isinstance(data, list):
-                    continue
-                for row in data:
-                    if not isinstance(row, dict):
-                        continue
-                    # Missing consent strictly defaults to False
-                    if not row.get("consent_given", False):
-                        continue
-                    if row.get("expires_at", now) < now:
-                        continue
-                    if row.get("id") in seen_ids:
-                        continue
-                    seen_ids.add(row["id"])
-
-                    # Expose ONLY feedback fields; never expose user account identifiers or paths
-                    records.append({
-                        "id": row["id"],
-                        "timestamp": row.get("timestamp"),
-                        "text": row.get("text", ""),
-                        "predicted_label": row.get("predicted_label", ""),
-                        "user_label": row.get("user_label", ""),
-                        "user_comment": row.get("user_comment", ""),
-                        "consent_given": True,
-                        "approved": bool(row.get("approved", False)),
-                        "rejected": bool(row.get("rejected", False)),
-                        "status": "approved" if row.get("approved") else ("rejected" if row.get("rejected") else "pending"),
-                        "rejection_reason": row.get("rejection_reason", ""),
-                        "expires_at": row.get("expires_at")
-                    })
-            except Exception:
-                continue
-
-    records.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    records = user_storage.feedback_for_review()
     return records[:limit] if limit else records
 
 
-def _find_and_update_feedback(entry_id: str, updater_fn) -> bool:
-    """Helper to update a feedback entry across current scope or all accounts."""
-    updated = False
-    def update_in_list(rows):
-        nonlocal updated
-        for row in rows:
-            if isinstance(row, dict) and row.get("id") == entry_id:
-                updater_fn(row)
-                updated = True
-        return rows
-
-    # Try current scope first
-    update_json("feedback.json", [], update_in_list)
-    if updated:
-        return True
-
-    # Otherwise scan accounts
-    if user_storage.ROOT.exists():
-        for fb_path in user_storage.ROOT.glob("*/feedback.json"):
-            try:
-                data = json.loads(fb_path.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    matched = False
-                    for row in data:
-                        if isinstance(row, dict) and row.get("id") == entry_id:
-                            updater_fn(row)
-                            matched = True
-                            updated = True
-                    if matched:
-                        fb_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-                        return True
-            except Exception:
-                continue
-    return updated
-
-
 def approve_feedback(entry_id: str, admin_user: Any = None) -> None:
-    """Approves a feedback entry. Requires administrator authorization and explicit consent."""
+    """Approves a correction for training. Requires an administrator and the author's consent."""
     if not is_authorized_admin(admin_user):
         raise PermissionError("Administrator authorization required to approve feedback.")
-
-    def do_approve(row):
-        # Default missing consent to False (including legacy records)
-        if not row.get("consent_given", False):
-            raise ValueError("Cannot approve feedback without user consent.")
-        row["approved"] = True
-        row["rejected"] = False
-        row["status"] = "approved"
-
-    found = _find_and_update_feedback(entry_id, do_approve)
-    if not found:
+    row = user_storage.get_feedback(entry_id, own_account_only=False)
+    if row is None:
         raise ValueError(f"Feedback entry '{entry_id}' not found.")
+    if not row["consent_given"]:
+        raise ValueError("Cannot approve feedback without user consent.")
+    user_storage.update_feedback(entry_id, own_account_only=False, status="approved", rejection_reason="",
+                                 reviewed_at=datetime.now(timezone.utc))
 
 
 def reject_feedback(entry_id: str, admin_user: Any = None, reason: str = "") -> None:
-    """Rejects a feedback entry. Requires administrator authorization."""
+    """Rejects a correction. Requires an administrator."""
     if not is_authorized_admin(admin_user):
         raise PermissionError("Administrator authorization required to reject feedback.")
-
-    def do_reject(row):
-        row["approved"] = False
-        row["rejected"] = True
-        row["status"] = "rejected"
-        row["rejection_reason"] = reason
-
-    found = _find_and_update_feedback(entry_id, do_reject)
-    if not found:
+    if not user_storage.update_feedback(entry_id, own_account_only=False, status="rejected", rejection_reason=reason or "",
+                                        reviewed_at=datetime.now(timezone.utc)):
         raise ValueError(f"Feedback entry '{entry_id}' not found.")
 
 
 def withdraw_feedback_consent(entry_id: str) -> None:
-    """Allows a user to withdraw consent from previously submitted feedback."""
-    def do_withdraw(row):
-        row["consent_given"] = False
-        row["approved"] = False
-        row["status"] = "withdrawn"
-
-    found = _find_and_update_feedback(entry_id, do_withdraw)
-    if not found:
+    """The author withdraws consent; the correction leaves the review queue and training."""
+    if not user_storage.update_feedback(entry_id, own_account_only=True, consent_given=False, status="withdrawn"):
         raise ValueError(f"Feedback entry '{entry_id}' not found.")
 
 
 def delete_feedback_record(entry_id: str) -> None:
-    """Deletes feedback from stored records.
-    
-    IMPORTANT NOTICE:
-    Deleting stored feedback removes it from the review queue and future model training,
-    but does NOT retroactively remove its influence from an already trained and released model.
-    """
-    def do_delete(rows):
-        return [r for r in rows if not isinstance(r, dict) or r.get("id") != entry_id]
+    """The author deletes a correction.
 
-    update_json("feedback.json", [], do_delete)
-    if user_storage.ROOT.exists():
-        for fb_path in user_storage.ROOT.glob("*/feedback.json"):
-            try:
-                data = json.loads(fb_path.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    filtered = [r for r in data if not isinstance(r, dict) or r.get("id") != entry_id]
-                    if len(filtered) != len(data):
-                        fb_path.write_text(json.dumps(filtered, indent=2, ensure_ascii=False), encoding="utf-8")
-            except Exception:
-                continue
+    This removes it from review and future training. It does not remove its influence
+    from a model that was already trained and released.
+    """
+    if not user_storage.delete_feedback(entry_id):
+        raise ValueError(f"Feedback entry '{entry_id}' not found.")
 
 
 def get_feedback_stats() -> Dict[str, Any]:
-    """Returns feedback statistics for the current user scope."""
+    """Returns feedback statistics for the current account."""
     rows = get_feedback_records()
     return {
         "total_feedback": len(rows),
@@ -278,52 +161,13 @@ def get_feedback_stats() -> Dict[str, Any]:
 
 
 def clear_feedback_data() -> None:
-    """Clears feedback data for the current account scope."""
-    write_json("feedback.json", [])
+    """Deletes all corrections of the current account."""
+    user_storage.clear_feedback()
 
 
 def get_trainable_feedback() -> List[Dict[str, Any]]:
-    """Returns eligible, consented, and approved corrections for training.
-    
-    CRITICAL:
-    - consent_given must be explicitly True (missing consent defaults to False).
-    - approved must be True.
-    - rejected must NOT be True.
-    - expired records are excluded.
-    """
-    eligible = []
-    seen_ids = set()
-    now = datetime.now(timezone.utc).isoformat()
-
-    def check_rows(rows):
-        for r in rows:
-            if not isinstance(r, dict):
-                continue
-            if r.get("id") in seen_ids:
-                continue
-            if (
-                r.get("consent_given", False) is True
-                and r.get("approved", False) is True
-                and not r.get("rejected", False)
-                and r.get("expires_at", now) >= now
-            ):
-                seen_ids.add(r["id"])
-                eligible.append(r)
-
-    # Current scope
-    check_rows(read_json("feedback.json", []))
-
-    # All accounts in ROOT
-    if user_storage.ROOT.exists():
-        for fb_path in user_storage.ROOT.glob("*/feedback.json"):
-            try:
-                data = json.loads(fb_path.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    check_rows(data)
-            except Exception:
-                continue
-
-    return eligible
+    """Corrections eligible for training: consent given, approved, not expired, from any account."""
+    return user_storage.trainable_feedback()
 
 
 def _get_release_lock_path() -> Path:
