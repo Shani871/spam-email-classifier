@@ -1,5 +1,10 @@
 # Single-node production stack: app + PostgreSQL + HTTPS reverse proxy + daily database backup.
 # Copy .env.example to .env, fill it in, then:  docker compose up -d --build
+# The database password from .env reaches the containers only as a secret file (/run/secrets/db_password).
+secrets:
+  db_password:
+    environment: POSTGRES_PASSWORD
+
 services:
   db:
     image: postgres:16-alpine
@@ -7,7 +12,9 @@ services:
     environment:
       POSTGRES_DB: spamguard
       POSTGRES_USER: spamguard
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,7 +34,12 @@ services:
       SPAMGUARD_ENV: production
       SPAMGUARD_TRUST_PROXY: "1"
       SPAMGUARD_PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
-      SPAMGUARD_DATABASE_URL: postgresql+psycopg://spamguard:${POSTGRES_PASSWORD}@db:5432/spamguard
+      POSTGRES_HOST: db
+      POSTGRES_DB: spamguard
+      POSTGRES_USER: spamguard
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     depends_on:
       db:
         condition: service_healthy
@@ -71,7 +83,8 @@ services:
       PGHOST: db
       PGUSER: spamguard
       PGDATABASE: spamguard
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+    secrets:
+      - db_password
     volumes:
       - db_backups:/backups
     # One pg_dump a day; dumps older than 7 days are removed. Expired rows are deleted by the app every hour.
@@ -79,6 +92,8 @@ services:
     command:
       - |
         umask 077
+        PGPASSWORD="$$(cat /run/secrets/db_password)"
+        export PGPASSWORD
         while true; do
           file=/backups/spamguard_$$(date -u +%Y%m%d_%H%M%S).dump
           if pg_dump --format=custom --no-owner --file="$$file.part"; then mv "$$file.part" "$$file"; echo "backup: $$file"; else echo "backup failed" >&2; fi

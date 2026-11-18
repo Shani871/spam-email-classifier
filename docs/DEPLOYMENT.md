@@ -41,7 +41,7 @@ Account data is now safe with several app containers sharing one PostgreSQL data
 
 ## First deployment
 
-Requirements: a Linux host with Docker Engine and the Compose plugin, 2 GB RAM, ports 80 and 443 open, and a DNS record for your domain pointing at the host.
+Requirements: a Linux host with Docker Engine and the Compose plugin (2.23 or newer, for secrets read from `.env`), 2 GB RAM, ports 80 and 443 open, and a DNS record for your domain pointing at the host.
 
 ```sh
 git clone <repository-url> spamguard && cd spamguard
@@ -53,7 +53,7 @@ Edit `.env`:
 | Variable | Required | Purpose |
 |---|---|---|
 | `DOMAIN` | yes | Public host name; Caddy obtains the certificate for it |
-| `POSTGRES_PASSWORD` | yes | Database password, letters and digits only: `openssl rand -hex 24` |
+| `POSTGRES_PASSWORD` | yes | Database password: `openssl rand -hex 24`. Compose hands it to the containers as a secret file (`/run/secrets/db_password`), so it never appears in their environment or in a URL |
 | `ACME_EMAIL` | no | Let's Encrypt contact address |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for sign-in | Google OAuth client; leave both empty for guest-only mode |
 | `SPAMGUARD_COOKIE_SECRET` | with sign-in | Random, 32+ characters: `openssl rand -hex 32` |

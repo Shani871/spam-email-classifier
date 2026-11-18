@@ -1,6 +1,7 @@
 """Database schema, engine and migrations.
 
-The database is chosen by SPAMGUARD_DATABASE_URL (or DATABASE_URL):
+The database is chosen by SPAMGUARD_DATABASE_URL (or DATABASE_URL, or POSTGRES_HOST with
+POSTGRES_USER, POSTGRES_DB and POSTGRES_PASSWORD_FILE as set by Docker Compose):
   - PostgreSQL in production, e.g. postgresql+psycopg://user:password@db:5432/spamguard
   - SQLite for local development and tests (default: data/spamguard.db)
 
@@ -90,8 +91,28 @@ def as_utc(value):
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
+def _postgres_url_from_parts() -> str:
+    """Build a PostgreSQL URL from POSTGRES_HOST and friends, reading the password from a file.
+
+    Used by Docker Compose, which passes the password as a secret file
+    (POSTGRES_PASSWORD_FILE) instead of an environment variable or a URL.
+    """
+    from urllib.parse import quote
+    host = os.environ.get("POSTGRES_HOST", "").strip()
+    if not host:
+        return ""
+    password = os.environ.get("POSTGRES_PASSWORD", "")
+    password_file = os.environ.get("POSTGRES_PASSWORD_FILE", "")
+    if password_file:
+        password = Path(password_file).read_text(encoding="utf-8").strip()
+    user = os.environ.get("POSTGRES_USER", "spamguard")
+    name = os.environ.get("POSTGRES_DB", "spamguard")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    return f"postgresql+psycopg://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{quote(name, safe='')}"
+
+
 def database_url() -> str:
-    url = os.environ.get("SPAMGUARD_DATABASE_URL") or os.environ.get("DATABASE_URL") or ""
+    url = os.environ.get("SPAMGUARD_DATABASE_URL") or os.environ.get("DATABASE_URL") or _postgres_url_from_parts()
     if url.startswith("postgres://"):  # common shorthand from hosting providers
         url = "postgresql+psycopg://" + url[len("postgres://"):]
     elif url.startswith("postgresql://"):

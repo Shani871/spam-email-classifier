@@ -38,6 +38,21 @@ def test_database_url_shorthands_and_default(monkeypatch):
     assert db.database_url().startswith("sqlite:///") and db.database_url().endswith("data/spamguard.db")
 
 
+def test_postgres_url_built_from_compose_secret_file(tmp_path, monkeypatch):
+    secret = tmp_path / "db_password"
+    secret.write_text("p@ss:w/rd#1\n", encoding="utf-8")
+    monkeypatch.delenv("SPAMGUARD_DATABASE_URL")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("POSTGRES_HOST", "db")
+    monkeypatch.setenv("POSTGRES_USER", "spamguard")
+    monkeypatch.setenv("POSTGRES_DB", "spamguard")
+    monkeypatch.setenv("POSTGRES_PASSWORD_FILE", str(secret))
+    url = db.database_url()
+    assert url == "postgresql+psycopg://spamguard:p%40ss%3Aw%2Frd%231@db:5432/spamguard"
+    from sqlalchemy.engine import make_url
+    assert make_url(url).password == "p@ss:w/rd#1"
+
+
 def test_accounts_are_stored_by_hash_only():
     with user_scope("person@example.com"):
         user_storage.add_history("High risk", 90, "General message")
