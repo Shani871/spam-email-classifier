@@ -133,6 +133,8 @@ def scan_gmail_with_oauth(
         from src.email_content import payload_metadata
         attachments, html_body = payload_metadata(payload)
         security_headers = {h["name"]: h.get("value", "") for h in headers_list}
+        from src.email_content import provider_sender_verification
+        sender_verification = provider_sender_verification([(h.get("name", ""), h.get("value", "")) for h in headers_list], sender)
 
         # Normalize text
         body = re.sub(r'\s+', ' ', body).strip()
@@ -147,6 +149,7 @@ def scan_gmail_with_oauth(
             "thread_id": msg_json.get("threadId", ""),
             "full_text": full_text + "\n" + html_body,
             "headers": security_headers,
+            "sender_verification": sender_verification,
             "attachments": attachments,
             "subject": subject,
             "sender": sender,

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+import numpy as np
 from unittest.mock import Mock
 import pandas as pd
 from src.user_storage import user_scope, write_json, read_json, delete_account_data
@@ -53,7 +54,9 @@ def test_feedback_reaches_training_and_releases_atomically(tmp_path, monkeypatch
     monkeypatch.setattr(training, "load_and_preprocess_data", lambda: baseline)
     classifier = Mock()
     classifier.predict.side_effect = lambda texts: baseline.set_index("cleaned_text").loc[list(texts), "label_binary"].to_numpy()
+    classifier.predict_proba.side_effect = lambda texts: np.column_stack([1 - classifier.predict(texts), classifier.predict(texts)]).astype(float)
     monkeypatch.setattr(predict, "load_model", lambda name: classifier)
+    monkeypatch.setattr(predict, "decision_threshold", lambda name: 0.5)
     seen = {}
     def candidate(dataframe, output_dir, test_data):
         seen["training"] = dataframe
@@ -124,7 +127,9 @@ def test_regressing_candidate_never_replaces_current_model(tmp_path, monkeypatch
     monkeypatch.setattr(training, "load_and_preprocess_data", lambda: baseline)
     classifier = Mock()
     classifier.predict.side_effect = lambda texts: baseline.set_index("cleaned_text").loc[list(texts), "label_binary"].to_numpy()
+    classifier.predict_proba.side_effect = lambda texts: np.column_stack([1 - classifier.predict(texts), classifier.predict(texts)]).astype(float)
     monkeypatch.setattr(predict, "load_model", lambda name: classifier)
+    monkeypatch.setattr(predict, "decision_threshold", lambda name: 0.5)
     def bad_candidate(dataframe, output_dir, test_data):
         from pathlib import Path
         Path(output_dir).mkdir(parents=True)

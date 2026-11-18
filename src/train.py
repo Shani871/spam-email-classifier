@@ -63,11 +63,26 @@ _MAX_ENRON_HAM_RATIO = 0.25
 
 # TF-IDF and classifier settings chosen by 5-fold cross-validation on the training
 # partition only (scripts/model_selection.py; results in docs/MODEL_CARD.md).
-TFIDF_MAX_FEATURES = 100000
+TFIDF_MAX_FEATURES = 300000
 TFIDF_MIN_DF = 2
-SVM_C = 3.0
+SVM_C = 1.0
 NB_ALPHA = 0.1
 RANDOM_SEED = 42
+# The spam threshold is raised above 0.5 until at most this share of legitimate training
+# mail (scored out-of-fold) would be called spam. Missing some spam is preferred to
+# flagging normal mail; the app's link, header and rule checks catch much of the rest.
+TARGET_HAM_FALSE_POSITIVE_RATE = 0.005
+
+
+def choose_threshold(y_true, spam_probability, target_fpr: float = TARGET_HAM_FALSE_POSITIVE_RATE) -> float:
+    """Lowest threshold (never below 0.5) whose false positive rate on legitimate mail is <= target_fpr."""
+    y_true = np.asarray(y_true)
+    ham_scores = np.sort(np.asarray(spam_probability)[y_true == 0])
+    if len(ham_scores) == 0:
+        return 0.5
+    allowed = int(np.floor(target_fpr * len(ham_scores)))
+    cutoff = ham_scores[len(ham_scores) - allowed - 1]
+    return float(min(0.99, max(0.5, np.nextafter(cutoff, 1.0))))
 
 
 def is_bow_reconstruction(text: str) -> bool:
@@ -158,7 +173,57 @@ def audit_feature_bias(top_features: dict, model_name: str) -> None:
         print(f"  [bias-audit] {model_name}: no corpus-specific tokens in top ham features.")
 
 
-def load_and_preprocess_data(include_bow_reconstructions: bool = False):
+EXTERNAL_DIR = os.path.join(DATASET_DIR, "external", "zenodo_8339691")
+# Corpora from the Zenodo "Phishing Email Curated Datasets" (record 8339691, CC BY 4.0).
+# Nazario_5 / Nigerian_5 are skipped: their legitimate rows are copies from the other sets.
+EXTERNAL_CORPORA = ("CEAS_08", "SpamAssasin", "Enron", "Ling", "Nazario", "Nigerian_Fraud", "TREC_05", "TREC_06", "TREC_07")
+# Cap per (corpus, label) so no single corpus or era dominates, and training stays fast.
+MAX_ROWS_PER_SOURCE_LABEL = 12000
+MAX_BODY_CHARS = 6000
+
+
+def load_external_corpora(max_rows_per_source_label: int = MAX_ROWS_PER_SOURCE_LABEL, seed: int = RANDOM_SEED) -> pd.DataFrame:
+    """Loads the downloaded public corpora (scripts/fetch_public_corpora.sh) as label/text/source rows.
+
+    Each file has subject, body and label (1 = spam or phishing, 0 = legitimate). Text is
+    "Subject: <subject>\n\n<body>" with the body cut to MAX_BODY_CHARS. Missing files are skipped,
+    so training still works without the download.
+    """
+    import csv
+    import sys as _sys
+    csv.field_size_limit(_sys.maxsize)
+    frames = []
+    for name in EXTERNAL_CORPORA:
+        path = os.path.join(EXTERNAL_DIR, f"{name}.csv")
+        if not os.path.exists(path):
+            continue
+        frame = pd.read_csv(path, engine="python", on_bad_lines="skip")
+        frame.columns = [c.strip().lower() for c in frame.columns]
+        if "label" not in frame.columns or "body" not in frame.columns:
+            print(f"Skipping {name}: unexpected columns {list(frame.columns)}")
+            continue
+        frame["label"] = pd.to_numeric(frame["label"], errors="coerce")
+        frame = frame[frame["label"].isin([0, 1])]
+        subject = frame["subject"].fillna("").astype(str) if "subject" in frame.columns else ""
+        body = frame["body"].fillna("").astype(str).str.slice(0, MAX_BODY_CHARS)
+        out = pd.DataFrame({
+            "label": np.where(frame["label"] == 1, "spam", "ham"),
+            "text": ("Subject: " + subject + "\n\n" + body).str.strip(),
+            "source": name.lower(),
+        })
+        out = out[out["text"].str.len() > 20]
+        parts = []
+        for _, group in out.groupby("label"):
+            parts.append(group.sample(n=min(len(group), max_rows_per_source_label), random_state=seed))
+        out = pd.concat(parts, ignore_index=True)
+        print(f"Loaded {len(out)} rows from {name}.csv ({(out['label'] == 'spam').sum()} spam)")
+        frames.append(out)
+    if not frames:
+        return pd.DataFrame(columns=["label", "text", "source"])
+    return pd.concat(frames, ignore_index=True)
+
+
+def load_and_preprocess_data(include_bow_reconstructions: bool = False, include_external: bool = True):
     """
     Loads and combines the labelled text in dataset/:
     - spam.csv: merged SMS and email benchmark rows (label, text)
@@ -206,6 +271,11 @@ def load_and_preprocess_data(include_bow_reconstructions: bool = False):
             df_d = df_d[df_d["label"] == "ham"]
             dfs.append(df_d[["label", "text"]].assign(source="modern_ham"))
             print(f"Loaded {len(df_d)} rows from ham_diverse.csv")
+
+    if include_external:
+        external = load_external_corpora()
+        if len(external):
+            dfs.append(external)
 
     if not dfs:
         raise FileNotFoundError(f"No valid dataset found in {DATASET_DIR}.")
@@ -362,6 +432,9 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
 
     X_train_tfidf = vectorizer.fit_transform(X_train)
     X_test_tfidf = vectorizer.transform(X_test)
+    if hasattr(vectorizer, "stop_words_"):
+        # Every term cut by max_features/min_df; only used for inspection, and very large when pickled.
+        vectorizer.stop_words_ = None
 
     # 1. Train Multinomial Naive Bayes
     print("\nTraining Multinomial Naive Bayes Classifier...")
@@ -374,6 +447,17 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
     svm_clf = CalibratedClassifierCV(estimator=base_svm, method='sigmoid', cv=3)
     svm_clf.fit(X_train_tfidf, y_train)
 
+    # Decision thresholds from out-of-fold probabilities on the training partition only.
+    thresholds = {"naive_bayes": 0.5, "svm": 0.5}
+    if len(X_train) >= 200:
+        from sklearn.base import clone
+        from sklearn.model_selection import cross_val_predict
+        print("Choosing decision thresholds from out-of-fold training predictions...")
+        for key, model in (("naive_bayes", nb_clf), ("svm", svm_clf)):
+            oof = cross_val_predict(clone(model), X_train_tfidf, y_train, cv=3, method="predict_proba")[:, 1]
+            thresholds[key] = choose_threshold(y_train, oof)
+            print(f"  {key}: threshold {thresholds[key]:.4f} (target ham false positive rate {TARGET_HAM_FALSE_POSITIVE_RATE:.1%})")
+
     # Evaluate both models
     models = {
         "naive_bayes": (nb_clf, "Multinomial Naive Bayes"),
@@ -383,8 +467,10 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
     all_metrics = {}
 
     for key, (model, display_name) in models.items():
-        y_pred = model.predict(X_test_tfidf)
         y_proba = model.predict_proba(X_test_tfidf)[:, 1]
+        threshold = thresholds[key]
+        y_pred = (y_proba >= threshold).astype(int)
+        y_pred_default = (y_proba >= 0.5).astype(int)
 
         acc = accuracy_score(y_test, y_pred)
         prec_spam = precision_score(y_test, y_pred, pos_label=1, zero_division=0)
@@ -410,7 +496,13 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
                 "true_positive": cm[1][1]
             },
             "classification_report": rep,
-            "top_features": top_words
+            "top_features": top_words,
+            "decision_threshold": round(float(threshold), 6),
+            "at_threshold_0_5": {
+                "precision_spam": round(float(precision_score(y_test, y_pred_default, zero_division=0)), 4),
+                "recall_spam": round(float(recall_score(y_test, y_pred_default, zero_division=0)), 4),
+                "false_positives": int(((y_pred_default == 1) & (np.asarray(y_test) == 0)).sum()),
+            },
         }
         if test_sources is not None:
             by_source = {}
@@ -425,7 +517,13 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
                     "spam_rows": int(((y_true_arr == 1) & mask).sum()),
                 }
             all_metrics[key]["by_source"] = by_source
-        all_metrics[key]["near_duplicate_audit"] = near_duplicate_audit(X_train_tfidf, X_test_tfidf, y_test, y_pred)
+        audit_rows = np.arange(X_test_tfidf.shape[0])
+        if len(audit_rows) > 6000:
+            audit_rows = np.random.default_rng(RANDOM_SEED).choice(audit_rows, 6000, replace=False)
+        all_metrics[key]["near_duplicate_audit"] = near_duplicate_audit(
+            X_train_tfidf, X_test_tfidf[audit_rows], np.asarray(y_test)[audit_rows], y_pred[audit_rows])
+        if len(audit_rows) < X_test_tfidf.shape[0]:
+            all_metrics[key]["near_duplicate_audit"]["sampled_test_rows"] = int(len(audit_rows))
 
         print(f"\n--- {display_name} Performance ---")
         print(f"Accuracy:  {acc * 100:.2f}%")
@@ -433,7 +531,7 @@ def train_models(dataframe=None, output_dir=None, test_data=None):
         print(f"Recall:    {rec_spam * 100:.2f}% (Spam)")
         print(f"F1-Score:  {f1_spam * 100:.2f}% (Spam)")
         print(f"ROC-AUC:   {roc_auc:.4f}")
-        print(f"Confusion Matrix (TN={cm[0][0]}, FP={cm[0][1]}, FN={cm[1][0]}, TP={cm[1][1]})")
+        print(f"Confusion Matrix (TN={cm[0][0]}, FP={cm[0][1]}, FN={cm[1][0]}, TP={cm[1][1]}) at threshold {threshold:.4f}")
         audit_feature_bias(top_words, display_name)
 
     # Create end-to-end inference pipelines (taking raw cleaned strings directly)

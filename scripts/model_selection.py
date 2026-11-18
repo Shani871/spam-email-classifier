@@ -3,12 +3,15 @@
 Everything here uses the TRAINING partition only (the same 80% that src/train.py fits on),
 so the held-out test set stays untouched by tuning:
 
-1. Data-source ablation: 5-fold CV with and without the word-count reconstructions
-   (dataset/emails-2.csv rows) added to the training folds. Validation folds are always
-   real message text.
-2. Hyperparameter grid: 5-fold CV over TF-IDF vocabulary size, min_df and classifier.
+1. Hyperparameter comparison: 3-fold CV over TF-IDF vocabulary size, min_df, whether the
+   number/currency/URL placeholder tokens are kept, and classifier.
+2. Optional (--ablation): CV with and without the word-count reconstructions
+   (dataset/emails-2.csv rows) added to the training folds.
 
-Usage:  python scripts/model_selection.py [--out output/model_selection]
+Includes the public corpora in dataset/external/ when they have been downloaded
+(scripts/fetch_public_corpora.sh).
+
+Usage:  python scripts/model_selection.py [--out output/model_selection] [--ablation]
 """
 import argparse
 import json
@@ -40,15 +43,19 @@ def training_partition(df):
     return df.loc[train_idx]
 
 
-def pipeline(max_features, min_df, classifier):
+PLACEHOLDER_TOKENS = ("number", "currency", "urladdr", "emailaddr")
+
+
+def pipeline(max_features, min_df, classifier, drop_placeholders=False):
+    stop_words = set(_ENRON_STOPWORDS) | (set(PLACEHOLDER_TOKENS) if drop_placeholders else set())
     return Pipeline([
         ("vectorizer", TfidfVectorizer(ngram_range=(1, 2), max_features=max_features, min_df=min_df,
-                                       sublinear_tf=True, stop_words=list(_ENRON_STOPWORDS))),
+                                       sublinear_tf=True, stop_words=sorted(stop_words))),
         ("classifier", classifier),
     ])
 
 
-def cross_validate(make_pipeline, train, extra_train=None, folds=5):
+def cross_validate(make_pipeline, train, extra_train=None, folds=3):
     """Out-of-fold predictions on `train`; `extra_train` rows are added to every training fold only."""
     X, y = train["cleaned_text"].to_numpy(), train["label_binary"].to_numpy()
     predictions = np.zeros(len(y), dtype=int)
@@ -73,6 +80,7 @@ def cross_validate(make_pipeline, train, extra_train=None, folds=5):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=str(ROOT / "output" / "model_selection"))
+    parser.add_argument("--ablation", action="store_true", help="also re-run the word-count reconstruction ablation")
     args = parser.parse_args()
     warnings.filterwarnings("ignore")
     out = Path(args.out)
@@ -80,36 +88,37 @@ def main():
 
     real = load_and_preprocess_data()
     train = training_partition(real)
-    with_bow = load_and_preprocess_data(include_bow_reconstructions=True)
-    bow = with_bow[with_bow["source"] == "bow"]
-
     svm = lambda C: LinearSVC(C=C, class_weight="balanced", random_state=RANDOM_SEED, max_iter=5000)
-    report = {"training_rows": int(len(train)), "bow_rows": int(len(bow)), "folds": 5, "seed": RANDOM_SEED}
+    report = {"training_rows": int(len(train)), "folds": 3, "seed": RANDOM_SEED,
+              "training_sources": {k: int(v) for k, v in train["source"].value_counts().items()}}
 
-    report["data_source_ablation"] = {
-        "real_text_only": cross_validate(lambda: pipeline(6000, 1, svm(1.0)), train),
-        "real_text_plus_word_count_reconstructions": cross_validate(lambda: pipeline(6000, 1, svm(1.0)), train, extra_train=bow),
-        "note": "Both use the previous settings (6,000 features, SVM C=1). Validation folds contain real text only.",
-    }
-    print(json.dumps(report["data_source_ablation"], indent=2))
+    if args.ablation:
+        with_bow = load_and_preprocess_data(include_bow_reconstructions=True)
+        bow = with_bow[with_bow["source"] == "bow"]
+        report["data_source_ablation"] = {
+            "real_text_only": cross_validate(lambda: pipeline(6000, 1, svm(1.0)), train),
+            "real_text_plus_word_count_reconstructions": cross_validate(lambda: pipeline(6000, 1, svm(1.0)), train, extra_train=bow),
+        }
 
-    grid = []
-    classifiers = [
-        ("LinearSVC C=0.3", lambda: svm(0.3)), ("LinearSVC C=1", lambda: svm(1.0)), ("LinearSVC C=3", lambda: svm(3.0)),
-        ("LogisticRegression C=10", lambda: LogisticRegression(C=10, class_weight="balanced", max_iter=2000)),
-        ("LogisticRegression C=30", lambda: LogisticRegression(C=30, class_weight="balanced", max_iter=2000)),
-        ("MultinomialNB alpha=0.1", lambda: MultinomialNB(alpha=0.1)),
-        ("MultinomialNB alpha=0.5", lambda: MultinomialNB(alpha=0.5)),
+    configs = [
+        (100000, 2, False, "LinearSVC C=1", lambda: svm(1.0)),
+        (100000, 2, False, "LinearSVC C=3", lambda: svm(3.0)),
+        (300000, 2, False, "LinearSVC C=1", lambda: svm(1.0)),
+        (300000, 2, False, "LinearSVC C=0.3", lambda: svm(0.3)),
+        (300000, 5, False, "LinearSVC C=1", lambda: svm(1.0)),
+        (300000, 2, True, "LinearSVC C=1", lambda: svm(1.0)),
+        (300000, 2, False, "LogisticRegression C=30", lambda: LogisticRegression(C=30, class_weight="balanced", max_iter=3000)),
+        (300000, 2, False, "MultinomialNB alpha=0.1", lambda: MultinomialNB(alpha=0.1)),
+        (300000, 2, False, "MultinomialNB alpha=0.03", lambda: MultinomialNB(alpha=0.03)),
     ]
-    for max_features in (6000, 20000, 50000, 100000):
-        for min_df in (1, 2):
-            for name, make in classifiers:
-                started = time.time()
-                row = {"max_features": max_features, "min_df": min_df, "classifier": name}
-                row.update(cross_validate(lambda: pipeline(max_features, min_df, make()), train))
-                row["seconds"] = round(time.time() - started, 1)
-                grid.append(row)
-                print(row)
+    grid = []
+    for max_features, min_df, drop, name, make in configs:
+        started = time.time()
+        row = {"max_features": max_features, "min_df": min_df, "drop_placeholder_tokens": drop, "classifier": name}
+        row.update(cross_validate(lambda: pipeline(max_features, min_df, make(), drop), train))
+        row["seconds"] = round(time.time() - started, 1)
+        grid.append(row)
+        print(row, flush=True)
     grid.sort(key=lambda r: r["cv_f1_spam"], reverse=True)
     report["grid"] = grid
     report["best"] = grid[0]

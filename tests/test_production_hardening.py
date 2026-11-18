@@ -138,3 +138,114 @@ def test_word_count_reconstructions_are_detected_but_messages_are_not():
     assert not is_bow_reconstruction("ok lar joking wif u oni")
     assert not is_bow_reconstruction("Subject: meeting notes  please review the attached agenda before monday .")
     assert not is_bow_reconstruction("no no no no i will not go")
+
+
+def test_choose_threshold_limits_false_positives_on_legitimate_mail():
+    import numpy as np
+    from src.train import choose_threshold
+    rng = np.random.default_rng(0)
+    ham = rng.uniform(0.0, 0.9, 1000)
+    spam = rng.uniform(0.6, 1.0, 1000)
+    y = np.r_[np.zeros(1000), np.ones(1000)]
+    threshold = choose_threshold(y, np.r_[ham, spam], target_fpr=0.01)
+    assert (ham >= threshold).mean() <= 0.01
+    assert 0.5 <= threshold < 0.99
+    assert choose_threshold(np.zeros(3), np.array([0.1, 0.2, 0.3]), target_fpr=0.01) == 0.5
+
+
+def test_prediction_uses_threshold_recorded_with_the_model(tmp_path, monkeypatch):
+    import json, shutil
+    from src import predict
+    for name in ("spam_classifier_svm.pkl", "metrics.json"):
+        shutil.copy(ROOT / "models" / name, tmp_path / name)
+    metrics = json.loads((tmp_path / "metrics.json").read_text())
+    metrics["models"]["svm"]["decision_threshold"] = 0.999
+    (tmp_path / "metrics.json").write_text(json.dumps(metrics))
+    monkeypatch.setattr(predict, "MODELS_DIR", str(tmp_path))
+    predict._LOADED_MODELS.clear()
+    try:
+        result = predict.predict_email("Congratulations you won a free cash prize, claim now", "svm")
+        assert result["threshold"] == 0.999
+        assert result["is_spam"] is (result["prob_spam"] >= 0.999)
+    finally:
+        predict._LOADED_MODELS.clear()
+
+
+def test_external_corpora_loader_reads_label_subject_body(tmp_path, monkeypatch):
+    import pandas as pd
+    from src import train
+    folder = tmp_path / "zenodo"
+    folder.mkdir()
+    pd.DataFrame({"subject": ["Hello", "WIN NOW"], "body": ["Meeting notes attached for review.", "Claim your free prize today at our site"],
+                  "label": [0, 1]}).to_csv(folder / "Ling.csv", index=False)
+    monkeypatch.setattr(train, "EXTERNAL_DIR", str(folder))
+    rows = train.load_external_corpora()
+    assert sorted(rows["label"]) == ["ham", "spam"]
+    assert set(rows["source"]) == {"ling"}
+    assert rows["text"].str.startswith("Subject: ").all()
+    monkeypatch.setattr(train, "EXTERNAL_DIR", str(tmp_path / "missing"))
+    assert train.load_external_corpora().empty
+
+
+GMAIL_AUTH = ("mx.google.com; dkim=pass header.i=@bank.example header.s=s1; "
+              "spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example; "
+              "dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example")
+
+
+def test_provider_verification_uses_only_the_topmost_authentication_results():
+    from src.email_content import provider_sender_verification
+    ok = provider_sender_verification([("Delivered-To", "me@example.com"), ("Authentication-Results", GMAIL_AUTH)], "Bank <alerts@bank.example>")
+    assert ok["verified"] and ok["domain"] == "bank.example" and ok["reported_by"] == "mx.google.com"
+    forged_below = [("Authentication-Results", "mx.google.com; dkim=none; spf=softfail; dmarc=fail header.from=bank.example"),
+                    ("Authentication-Results", GMAIL_AUTH)]
+    assert not provider_sender_verification(forged_below, "alerts@bank.example")["verified"]
+    assert not provider_sender_verification([("Authentication-Results", GMAIL_AUTH)], "alerts@bank-example.top")["verified"]
+    assert not provider_sender_verification([], "alerts@bank.example")["verified"]
+
+
+def test_classifier_points_follow_threshold_and_sender_verification():
+    from src.ai_threat_intelligence import classifier_points
+    assert classifier_points(0.0, 0.9) == 0
+    assert abs(classifier_points(0.9, 0.9) - 20) < 1e-9
+    assert classifier_points(0.89, 0.9) < 20
+    assert abs(classifier_points(1.0, 0.9) - 45) < 1e-9
+    assert abs(classifier_points(1.0, 0.9, sender_verified=True) - 18) < 1e-9
+
+
+def test_verified_sender_lowers_wording_score_but_not_link_warnings(monkeypatch):
+    from src import ai_threat_intelligence
+    from src.scam_assistant import check_message
+
+    def confident_spam(text, model_type="svm"):
+        return {"assessable": True, "label": "Spam", "is_spam": True, "confidence": 1.0, "prob_spam": 1.0,
+                "prob_ham": 0.0, "model_type": model_type, "cleaned_text": text, "key_features": [], "threshold": 0.9}
+
+    monkeypatch.setattr(ai_threat_intelligence, "predict_email", confident_spam)
+    alert = "Subject: Payment Received\n\nRs. 12810.83 has been credited to your account via NEFT. For queries call customer support."
+    assert check_message(alert, sender="alerts@bank.example")["assessment"] == "Needs verification"
+    verified = check_message(alert, sender="alerts@bank.example", sender_verified=True)
+    assert verified["assessment"] == "No strong warning found" and verified["sender_verified"]
+    phish = "Subject: Verify now\n\nYour account is suspended. Verify immediately at http://paypa1-security-update.com/login"
+    assert check_message(phish, sender="alerts@bank.example", sender_verified=True)["assessment"] == "High risk"
+
+
+def test_job_wording_asks_for_verification_unless_provider_verified_sender():
+    from src.scam_assistant import check_message
+    alert = "Subject: Acme is hiring a Python Developer\n\nAcme Python Developer: we are looking for engineers. View job and apply on our careers page."
+    assert check_message(alert, sender="jobalerts@jobs.example")["assessment"] == "Needs verification"
+    assert check_message(alert, sender="jobalerts@jobs.example", sender_verified=True)["assessment"] == "No strong warning found"
+    assert check_message(alert, category="Job or internship", sender="jobalerts@jobs.example", sender_verified=True)["assessment"] == "Needs verification"
+    scam = "Subject: Job offer\n\nYou are hired. Pay the registration fee of Rs 2000 to confirm your joining."
+    assert check_message(scam, sender="hr@jobs.example", sender_verified=True)["assessment"] != "No strong warning found"
+
+
+def test_feedback_retraining_refuses_without_the_public_corpora(tmp_path, monkeypatch):
+    import json
+    from src import active_learning, train
+    (tmp_path / "metrics.json").write_text(json.dumps({"source_counts": {"ceas_08": 10, "sms": 5}}))
+    monkeypatch.setattr(active_learning, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(train, "EXTERNAL_DIR", str(tmp_path / "absent"))
+    assert active_learning.missing_training_corpora() == ["CEAS_08"]
+    monkeypatch.setattr(active_learning, "get_trainable_feedback", lambda: [{}] * 10)
+    outcome = active_learning._retrain(5)
+    assert outcome["success"] is False and "fetch_public_corpora" in outcome["message"]

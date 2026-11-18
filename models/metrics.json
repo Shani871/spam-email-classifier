@@ -1,12 +1,21 @@
 {
-  "dataset_size": 10665,
-  "train_samples": 8532,
-  "test_samples": 2133,
-  "ham_count": 8686,
-  "spam_count": 1979,
+  "dataset_size": 124742,
+  "train_samples": 99793,
+  "test_samples": 24949,
+  "ham_count": 69470,
+  "spam_count": 55272,
   "source_counts": {
-    "email": 5435,
+    "trec_07": 23085,
+    "trec_05": 22609,
+    "ceas_08": 20757,
+    "enron": 20697,
+    "trec_06": 15662,
+    "spamassasin": 5725,
     "sms": 5090,
+    "email": 3368,
+    "nigerian_fraud": 3235,
+    "ling": 2854,
+    "nazario": 1520,
     "modern_ham": 140
   },
   "training_config": {
@@ -15,13 +24,13 @@
         1,
         2
       ],
-      "max_features": 100000,
+      "max_features": 300000,
       "min_df": 2,
       "sublinear_tf": true,
-      "vocabulary_size": 100000
+      "vocabulary_size": 300000
     },
     "svm": {
-      "C": 3.0,
+      "C": 1.0,
       "class_weight": "balanced",
       "calibration": "sigmoid, 3-fold"
     },
@@ -35,457 +44,554 @@
   "models": {
     "naive_bayes": {
       "display_name": "Multinomial Naive Bayes",
-      "accuracy": 0.9742,
-      "precision_spam": 0.9802,
-      "recall_spam": 0.8785,
-      "f1_spam": 0.9266,
-      "roc_auc": 0.991,
+      "accuracy": 0.9495,
+      "precision_spam": 0.9926,
+      "recall_spam": 0.8927,
+      "f1_spam": 0.94,
+      "roc_auc": 0.9947,
       "confusion_matrix": {
-        "true_negative": 1731,
-        "false_positive": 7,
-        "false_negative": 48,
-        "true_positive": 347
+        "true_negative": 13821,
+        "false_positive": 74,
+        "false_negative": 1186,
+        "true_positive": 9868
       },
       "classification_report": {
         "ham": {
-          "precision": 0.9730185497470489,
-          "recall": 0.9959723820483314,
-          "f1-score": 0.9843616718794427,
-          "support": 1738.0
+          "precision": 0.92097021390018,
+          "recall": 0.9946743432889529,
+          "f1-score": 0.9564044010795101,
+          "support": 13895.0
         },
         "spam": {
-          "precision": 0.980225988700565,
-          "recall": 0.8784810126582279,
-          "f1-score": 0.9265687583444593,
-          "support": 395.0
+          "precision": 0.9925568296117482,
+          "recall": 0.8927085218020626,
+          "f1-score": 0.9399885692512859,
+          "support": 11054.0
         },
-        "accuracy": 0.974214721050164,
+        "accuracy": 0.9494969738266062,
         "macro avg": {
-          "precision": 0.9766222692238069,
-          "recall": 0.9372266973532797,
-          "f1-score": 0.9554652151119509,
-          "support": 2133.0
+          "precision": 0.956763521755964,
+          "recall": 0.9436914325455077,
+          "f1-score": 0.948196485165398,
+          "support": 24949.0
         },
         "weighted avg": {
-          "precision": 0.9743532606643667,
-          "recall": 0.974214721050164,
-          "f1-score": 0.9736592804840752,
-          "support": 2133.0
+          "precision": 0.9526876554840379,
+          "recall": 0.9494969738266062,
+          "f1-score": 0.9491311394245664,
+          "support": 24949.0
         }
       },
       "top_features": {
         "spam_keywords": [
           {
-            "word": "viagra",
-            "score": 5.6348
+            "word": "replica classics",
+            "score": 7.2743
           },
           {
-            "word": "150p",
-            "score": 5.2882
+            "word": "cialis",
+            "score": 7.129
           },
           {
-            "word": "andmanyother",
-            "score": 5.2639
+            "word": "canadianpharmacy",
+            "score": 7.0667
           },
           {
-            "word": "stationery",
-            "score": 5.2003
+            "word": "day target",
+            "score": 6.915
           },
           {
-            "word": "oem",
-            "score": 5.1118
+            "word": "watches replica",
+            "score": 6.8109
           },
           {
-            "word": "subject save",
-            "score": 5.0482
+            "word": "next kin",
+            "score": 6.7456
           },
           {
-            "word": "oniine",
-            "score": 4.9722
+            "word": "replica watches",
+            "score": 6.6746
           },
           {
-            "word": "number prize",
-            "score": 4.9533
+            "word": "life glad",
+            "score": 6.581
           },
           {
-            "word": "number claim",
-            "score": 4.9099
+            "word": "think health",
+            "score": 6.5362
           },
           {
-            "word": "mx number",
-            "score": 4.8285
+            "word": "replica watch",
+            "score": 6.499
           },
           {
-            "word": "ringtone",
-            "score": 4.8218
+            "word": "anatrim",
+            "score": 6.4965
           },
           {
-            "word": "hello welcome",
-            "score": 4.8216
+            "word": "per dose",
+            "score": 6.4161
           },
           {
-            "word": "won currency",
-            "score": 4.7806
+            "word": "patek",
+            "score": 6.4042
           },
           {
-            "word": "macromedia",
-            "score": 4.7567
+            "word": "premiere number",
+            "score": 6.3388
           },
           {
-            "word": "submit website",
-            "score": 4.7372
+            "word": "health personal",
+            "score": 6.2909
           },
           {
-            "word": "stop number",
-            "score": 4.6944
+            "word": "patek philippe",
+            "score": 6.2862
           },
           {
-            "word": "projecthoneypot",
-            "score": 4.6506
+            "word": "ffffc0",
+            "score": 6.2741
           },
           {
-            "word": "prize",
-            "score": 4.6379
+            "word": "cialis urladdr",
+            "score": 6.2599
           },
           {
-            "word": "oem software",
-            "score": 4.6182
+            "word": "soft tabs",
+            "score": 6.256
           },
           {
-            "word": "shops",
-            "score": 4.615
+            "word": "professional currency",
+            "score": 6.2028
           }
         ],
         "ham_keywords": [
           {
-            "word": "yeah",
-            "score": 4.5936
+            "word": "dmdx",
+            "score": 7.3199
           },
           {
-            "word": "lol",
-            "score": 4.5064
+            "word": "posting guide",
+            "score": 7.1638
           },
           {
-            "word": "dinner",
-            "score": 4.4649
+            "word": "reproducible",
+            "score": 7.1626
           },
           {
-            "word": "research group",
-            "score": 4.4158
+            "word": "read posting",
+            "score": 7.1584
           },
           {
-            "word": "kevin",
-            "score": 4.3838
+            "word": "guide urladdr",
+            "score": 7.1566
           },
           {
-            "word": "gibner",
-            "score": 4.3825
+            "word": "provide commented",
+            "score": 7.1551
           },
           {
-            "word": "zimin",
-            "score": 4.2872
+            "word": "commented minimal",
+            "score": 7.155
           },
           {
-            "word": "rice",
-            "score": 4.2156
+            "word": "minimal self",
+            "score": 7.155
           },
           {
-            "word": "lon",
-            "score": 4.114
+            "word": "reproducible code",
+            "score": 7.1545
           },
           {
-            "word": "meeting",
-            "score": 4.105
+            "word": "contained reproducible",
+            "score": 7.1541
           },
           {
-            "word": "gonna",
-            "score": 4.0661
+            "word": "python dev",
+            "score": 6.9532
           },
           {
-            "word": "tanya",
-            "score": 4.0653
+            "word": "handyboard",
+            "score": 6.8875
           },
           {
-            "word": "haha",
-            "score": 4.0352
+            "word": "subject dmdx",
+            "score": 6.828
           },
           {
-            "word": "lunch",
-            "score": 4.033
+            "word": "re python",
+            "score": 6.7854
           },
           {
-            "word": "vasant",
-            "score": 4.0283
+            "word": "python number",
+            "score": 6.7831
           },
           {
-            "word": "weather",
-            "score": 4.004
+            "word": "samba number",
+            "score": 6.732
           },
           {
-            "word": "cos",
-            "score": 3.97
+            "word": "branches samba",
+            "score": 6.5389
           },
           {
-            "word": "dun",
-            "score": 3.9633
+            "word": "handy board",
+            "score": 6.4976
           },
           {
-            "word": "wharton",
-            "score": 3.9517
+            "word": "perl number",
+            "score": 6.4829
           },
           {
-            "word": "derivatives",
-            "score": 3.9372
+            "word": "svn",
+            "score": 6.3929
           }
         ]
       },
+      "decision_threshold": 0.858117,
+      "at_threshold_0_5": {
+        "precision_spam": 0.9738,
+        "recall_spam": 0.9549,
+        "false_positives": 284
+      },
       "by_source": {
+        "ceas_08": {
+          "test_rows": 4151,
+          "false_positives": 22,
+          "false_negatives": 117,
+          "ham_rows": 2376,
+          "spam_rows": 1775
+        },
         "email": {
-          "test_rows": 1087,
+          "test_rows": 674,
+          "false_positives": 0,
+          "false_negatives": 17,
+          "ham_rows": 519,
+          "spam_rows": 155
+        },
+        "enron": {
+          "test_rows": 4140,
           "false_positives": 2,
-          "false_negatives": 32,
-          "ham_rows": 814,
-          "spam_rows": 273
+          "false_negatives": 187,
+          "ham_rows": 1867,
+          "spam_rows": 2273
+        },
+        "ling": {
+          "test_rows": 570,
+          "false_positives": 0,
+          "false_negatives": 25,
+          "ham_rows": 479,
+          "spam_rows": 91
         },
         "modern_ham": {
           "test_rows": 28,
-          "false_positives": 0,
+          "false_positives": 1,
           "false_negatives": 0,
           "ham_rows": 28,
           "spam_rows": 0
         },
+        "nazario": {
+          "test_rows": 304,
+          "false_positives": 0,
+          "false_negatives": 55,
+          "ham_rows": 0,
+          "spam_rows": 304
+        },
+        "nigerian_fraud": {
+          "test_rows": 647,
+          "false_positives": 0,
+          "false_negatives": 4,
+          "ham_rows": 0,
+          "spam_rows": 647
+        },
         "sms": {
           "test_rows": 1018,
-          "false_positives": 5,
-          "false_negatives": 16,
+          "false_positives": 19,
+          "false_negatives": 42,
           "ham_rows": 896,
           "spam_rows": 122
+        },
+        "spamassasin": {
+          "test_rows": 1145,
+          "false_positives": 3,
+          "false_negatives": 32,
+          "ham_rows": 816,
+          "spam_rows": 329
+        },
+        "trec_05": {
+          "test_rows": 4522,
+          "false_positives": 10,
+          "false_negatives": 368,
+          "ham_rows": 2194,
+          "spam_rows": 2328
+        },
+        "trec_06": {
+          "test_rows": 3133,
+          "false_positives": 6,
+          "false_negatives": 114,
+          "ham_rows": 2385,
+          "spam_rows": 748
+        },
+        "trec_07": {
+          "test_rows": 4617,
+          "false_positives": 11,
+          "false_negatives": 225,
+          "ham_rows": 2335,
+          "spam_rows": 2282
         }
       },
       "near_duplicate_audit": {
         "cosine_threshold": 0.9,
-        "test_rows_with_near_duplicate_in_train": 225,
-        "share_of_test": 0.1055,
-        "novel_test_rows": 1908,
-        "novel_accuracy": 0.9712,
-        "novel_precision_spam": 0.9746,
-        "novel_recall_spam": 0.8486,
-        "novel_f1_spam": 0.9073
+        "test_rows_with_near_duplicate_in_train": 943,
+        "share_of_test": 0.1572,
+        "novel_test_rows": 5057,
+        "novel_accuracy": 0.9464,
+        "novel_precision_spam": 0.9857,
+        "novel_recall_spam": 0.8798,
+        "novel_f1_spam": 0.9298,
+        "sampled_test_rows": 6000
       }
     },
     "svm": {
       "display_name": "Support Vector Machine (Linear)",
-      "accuracy": 0.9873,
-      "precision_spam": 0.9646,
-      "recall_spam": 0.9671,
-      "f1_spam": 0.9659,
-      "roc_auc": 0.996,
+      "accuracy": 0.9693,
+      "precision_spam": 0.9952,
+      "recall_spam": 0.9352,
+      "f1_spam": 0.9643,
+      "roc_auc": 0.998,
       "confusion_matrix": {
-        "true_negative": 1724,
-        "false_positive": 14,
-        "false_negative": 13,
-        "true_positive": 382
+        "true_negative": 13845,
+        "false_positive": 50,
+        "false_negative": 716,
+        "true_positive": 10338
       },
       "classification_report": {
         "ham": {
-          "precision": 0.9925158318940702,
-          "recall": 0.9919447640966629,
-          "f1-score": 0.9922302158273382,
-          "support": 1738.0
+          "precision": 0.950827553052675,
+          "recall": 0.9964015833033465,
+          "f1-score": 0.9730812482429013,
+          "support": 13895.0
         },
         "spam": {
-          "precision": 0.9646464646464646,
-          "recall": 0.9670886075949368,
-          "f1-score": 0.965865992414665,
-          "support": 395.0
+          "precision": 0.9951867539468617,
+          "recall": 0.9352270671250226,
+          "f1-score": 0.9642757205484563,
+          "support": 11054.0
         },
-        "accuracy": 0.9873417721518988,
+        "accuracy": 0.969297366627921,
         "macro avg": {
-          "precision": 0.9785811482702674,
-          "recall": 0.9795166858457998,
-          "f1-score": 0.9790481041210015,
-          "support": 2133.0
+          "precision": 0.9730071534997684,
+          "recall": 0.9658143252141845,
+          "f1-score": 0.9686784843956788,
+          "support": 24949.0
         },
         "weighted avg": {
-          "precision": 0.9873548379593284,
-          "recall": 0.9873417721518988,
-          "f1-score": 0.9873479522323988,
-          "support": 2133.0
+          "precision": 0.9704815113950671,
+          "recall": 0.969297366627921,
+          "f1-score": 0.9691798372390777,
+          "support": 24949.0
         }
       },
       "top_features": {
         "spam_keywords": [
           {
             "word": "subject",
-            "score": 4.0301
-          },
-          {
-            "word": "call number",
-            "score": 2.6111
-          },
-          {
-            "word": "click",
-            "score": 2.378
+            "score": 7.4121
           },
           {
             "word": "urladdr",
-            "score": 2.2624
+            "score": 3.0938
+          },
+          {
+            "word": "click",
+            "score": 2.9774
+          },
+          {
+            "word": "hi urladdr",
+            "score": 2.243
           },
           {
             "word": "http",
-            "score": 2.036
+            "score": 2.2247
           },
           {
-            "word": "free",
-            "score": 1.8493
+            "word": "meds",
+            "score": 2.058
           },
           {
-            "word": "150p",
-            "score": 1.7918
+            "word": "huge",
+            "score": 1.9882
           },
           {
-            "word": "sex",
-            "score": 1.7541
+            "word": "life",
+            "score": 1.8825
           },
           {
-            "word": "number",
-            "score": 1.7136
+            "word": "cialis",
+            "score": 1.8464
           },
           {
-            "word": "software",
-            "score": 1.6975
-          },
-          {
-            "word": "claim",
-            "score": 1.6947
+            "word": "goodbye",
+            "score": 1.8361
           },
           {
             "word": "viagra",
-            "score": 1.6916
+            "score": 1.787
           },
           {
-            "word": "txt",
-            "score": 1.674
+            "word": "remove",
+            "score": 1.7763
           },
           {
-            "word": "hear new",
-            "score": 1.6562
+            "word": "ra",
+            "score": 1.767
           },
           {
-            "word": "currency number",
-            "score": 1.6063
+            "word": "adf",
+            "score": 1.761
           },
           {
-            "word": "arsenal",
-            "score": 1.5565
+            "word": "pills",
+            "score": 1.7508
           },
           {
-            "word": "mobile",
-            "score": 1.5312
+            "word": "mrs",
+            "score": 1.6902
           },
           {
-            "word": "currency",
-            "score": 1.5014
+            "word": "quality",
+            "score": 1.6617
           },
           {
-            "word": "reply",
-            "score": 1.4673
+            "word": "account",
+            "score": 1.647
           },
           {
-            "word": "ringtone",
-            "score": 1.4397
+            "word": "subject get",
+            "score": 1.642
+          },
+          {
+            "word": "offer",
+            "score": 1.6329
           }
         ],
         "ham_keywords": [
           {
-            "word": "sorry",
-            "score": 1.1489
+            "word": "wrote",
+            "score": 4.0131
           },
           {
-            "word": "energy",
-            "score": 1.0184
+            "word": "thanks",
+            "score": 3.8059
           },
           {
-            "word": "research",
-            "score": 0.9872
+            "word": "urladdr date",
+            "score": 2.4589
           },
           {
-            "word": "subject re",
-            "score": 0.9594
+            "word": "university",
+            "score": 2.424
           },
           {
-            "word": "number pm",
-            "score": 0.9356
+            "word": "louise",
+            "score": 2.1529
           },
           {
-            "word": "tel",
-            "score": 0.893
+            "word": "list",
+            "score": 2.0765
           },
           {
-            "word": "pm",
-            "score": 0.8749
+            "word": "emailaddr urladdr",
+            "score": 1.9006
           },
           {
-            "word": "ok",
-            "score": 0.8628
+            "word": "anyone",
+            "score": 1.8966
           },
           {
             "word": "attached",
-            "score": 0.8626
+            "score": 1.8538
           },
           {
-            "word": "morning",
-            "score": 0.8532
+            "word": "dmdx",
+            "score": 1.8397
           },
           {
-            "word": "lt",
-            "score": 0.8415
+            "word": "handyboard",
+            "score": 1.8291
           },
           {
-            "word": "questions",
-            "score": 0.7947
+            "word": "opensuse",
+            "score": 1.7788
           },
           {
-            "word": "lunch",
-            "score": 0.7761
+            "word": "list emailaddr",
+            "score": 1.7466
           },
           {
-            "word": "conference",
-            "score": 0.7757
+            "word": "following",
+            "score": 1.72
           },
           {
-            "word": "available",
-            "score": 0.7725
+            "word": "employees",
+            "score": 1.7164
           },
           {
-            "word": "password",
-            "score": 0.7722
+            "word": "gud",
+            "score": 1.6959
           },
           {
-            "word": "thank",
-            "score": 0.7462
+            "word": "doc",
+            "score": 1.6857
           },
           {
-            "word": "jeff",
-            "score": 0.7336
+            "word": "number pm",
+            "score": 1.6606
           },
           {
-            "word": "model",
-            "score": 0.7195
+            "word": "url urladdr",
+            "score": 1.6224
           },
           {
-            "word": "cant",
-            "score": 0.6917
+            "word": "mike",
+            "score": 1.622
           }
         ]
       },
+      "decision_threshold": 0.886888,
+      "at_threshold_0_5": {
+        "precision_spam": 0.98,
+        "recall_spam": 0.9809,
+        "false_positives": 221
+      },
       "by_source": {
-        "email": {
-          "test_rows": 1087,
+        "ceas_08": {
+          "test_rows": 4151,
           "false_positives": 11,
-          "false_negatives": 5,
-          "ham_rows": 814,
-          "spam_rows": 273
+          "false_negatives": 38,
+          "ham_rows": 2376,
+          "spam_rows": 1775
+        },
+        "email": {
+          "test_rows": 674,
+          "false_positives": 1,
+          "false_negatives": 10,
+          "ham_rows": 519,
+          "spam_rows": 155
+        },
+        "enron": {
+          "test_rows": 4140,
+          "false_positives": 1,
+          "false_negatives": 134,
+          "ham_rows": 1867,
+          "spam_rows": 2273
+        },
+        "ling": {
+          "test_rows": 570,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "ham_rows": 479,
+          "spam_rows": 91
         },
         "modern_ham": {
           "test_rows": 28,
@@ -494,23 +600,66 @@
           "ham_rows": 28,
           "spam_rows": 0
         },
+        "nazario": {
+          "test_rows": 304,
+          "false_positives": 0,
+          "false_negatives": 38,
+          "ham_rows": 0,
+          "spam_rows": 304
+        },
+        "nigerian_fraud": {
+          "test_rows": 647,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "ham_rows": 0,
+          "spam_rows": 647
+        },
         "sms": {
           "test_rows": 1018,
-          "false_positives": 3,
-          "false_negatives": 8,
+          "false_positives": 6,
+          "false_negatives": 32,
           "ham_rows": 896,
           "spam_rows": 122
+        },
+        "spamassasin": {
+          "test_rows": 1145,
+          "false_positives": 3,
+          "false_negatives": 27,
+          "ham_rows": 816,
+          "spam_rows": 329
+        },
+        "trec_05": {
+          "test_rows": 4522,
+          "false_positives": 19,
+          "false_negatives": 188,
+          "ham_rows": 2194,
+          "spam_rows": 2328
+        },
+        "trec_06": {
+          "test_rows": 3133,
+          "false_positives": 3,
+          "false_negatives": 59,
+          "ham_rows": 2385,
+          "spam_rows": 748
+        },
+        "trec_07": {
+          "test_rows": 4617,
+          "false_positives": 6,
+          "false_negatives": 174,
+          "ham_rows": 2335,
+          "spam_rows": 2282
         }
       },
       "near_duplicate_audit": {
         "cosine_threshold": 0.9,
-        "test_rows_with_near_duplicate_in_train": 225,
-        "share_of_test": 0.1055,
-        "novel_test_rows": 1908,
-        "novel_accuracy": 0.9858,
-        "novel_precision_spam": 0.956,
-        "novel_recall_spam": 0.959,
-        "novel_f1_spam": 0.9575
+        "test_rows_with_near_duplicate_in_train": 943,
+        "share_of_test": 0.1572,
+        "novel_test_rows": 5057,
+        "novel_accuracy": 0.9646,
+        "novel_precision_spam": 0.9936,
+        "novel_recall_spam": 0.9181,
+        "novel_f1_spam": 0.9544,
+        "sampled_test_rows": 6000
       }
     }
   }

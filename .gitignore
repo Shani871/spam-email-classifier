@@ -52,3 +52,6 @@ tmp/
 
 # Local deployment configuration
 .env
+
+# Downloaded public corpora (see scripts/fetch_public_corpora.sh)
+dataset/external/

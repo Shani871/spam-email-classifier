@@ -211,17 +211,20 @@ class InboxAutomationWorker:
                 continue
 
             full_text = item.get("full_text") or f"Subject: {item.get('subject', '')}\n\n{item.get('body_preview', '')}"
-            report = compute_threat_intelligence(full_text, model_type=self.model_type, headers=item.get("headers"), attachments=item.get("attachments"))
+            report = compute_threat_intelligence(full_text, model_type=self.model_type, headers=item.get("headers"), attachments=item.get("attachments"),
+                                                 sender_verified=bool((item.get("sender_verification") or {}).get("verified")))
 
             # Auto-Triage Decision Matrix
             threat_score = report["threat_score"]
             from src.gmail_actions import evaluate_remediation_policy
-            policy = evaluate_remediation_policy(item.get("sender", ""), threat_score, report["ml_result"]["is_spam"])
+            # A classifier-only verdict does not count against a sender the provider authenticated.
+            wording_spam = report["ml_result"]["is_spam"] and not report.get("sender_verified")
+            policy = evaluate_remediation_policy(item.get("sender", ""), threat_score, wording_spam)
             if policy["quarantine_recommended"]:
                 action = "QUARANTINE_RECOMMENDED"
                 self.stats.setdefault("quarantine_recommended", 0)
                 self.stats["quarantine_recommended"] += 1
-            elif threat_score >= 50 or report["ml_result"]["is_spam"]:
+            elif threat_score >= 50 or wording_spam:
                 action = "FLAGGED_SPAM"
                 self.stats["spam_flagged"] += 1
             else:

@@ -20,6 +20,8 @@ from src.preprocessing import clean_text
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 
 _LOADED_MODELS = {}
+_THRESHOLDS = {}
+_ACTIVE_KEYS = {}
 
 
 def load_model(model_type: str = "nb"):
@@ -51,7 +53,27 @@ def load_model(model_type: str = "nb"):
         if not os.path.exists(model_path):
             raise FileNotFoundError("Model unavailable. Train the baseline model from Advanced before checking messages.")
         _LOADED_MODELS[cache_key] = joblib.load(model_path)
+        _THRESHOLDS[cache_key] = _read_threshold(directory, key)
+    _ACTIVE_KEYS[key] = cache_key
     return _LOADED_MODELS[cache_key]
+
+
+def _read_threshold(directory: str, key: str) -> float:
+    """Spam threshold chosen at training time (models/metrics.json), 0.5 if not recorded."""
+    import json
+    try:
+        with open(os.path.join(directory, "metrics.json"), encoding="utf-8") as handle:
+            metrics = json.load(handle)
+        value = metrics["models"]["naive_bayes" if key == "nb" else "svm"].get("decision_threshold", 0.5)
+        return float(value) if 0.0 < float(value) < 1.0 else 0.5
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0.5
+
+
+def decision_threshold(model_type: str = "nb") -> float:
+    load_model(model_type)
+    key = "nb" if model_type.lower() in ["nb", "naive_bayes", "naivebayes"] else "svm"
+    return _THRESHOLDS.get(_ACTIVE_KEYS.get(key), 0.5)
 
 
 def explain_prediction(text_cleaned: str, pipeline, top_k: int = 5):
@@ -145,7 +167,8 @@ def predict_email(raw_text: str, model_type: str = "nb") -> dict:
     prob_ham = float(probabilities[0])
     prob_spam = float(probabilities[1])
 
-    is_spam = prob_spam >= 0.50
+    threshold = decision_threshold(model_type)
+    is_spam = prob_spam >= threshold
     label = "Spam" if is_spam else "Ham"
     confidence = prob_spam if is_spam else prob_ham
 
@@ -160,7 +183,8 @@ def predict_email(raw_text: str, model_type: str = "nb") -> dict:
         "prob_ham": round(prob_ham, 4),
         "model_type": model_type,
         "cleaned_text": cleaned,
-        "key_features": key_features
+        "key_features": key_features,
+        "threshold": round(threshold, 4)
     }
 
 

@@ -344,15 +344,36 @@ def retrain_model_with_feedback(min_feedback_required: int = 5, admin_user: Any 
         return {"success": False, "message": "Another model release is in progress."}
 
 
+def missing_training_corpora() -> List[str]:
+    """Public corpora the active model was trained on that are not available locally."""
+    import os
+    from src.train import EXTERNAL_CORPORA, EXTERNAL_DIR
+    active = MODELS_DIR / "active.json"
+    folder = MODELS_DIR
+    try:
+        if active.exists():
+            version = json.loads(active.read_text(encoding="utf-8"))["version"]
+            folder = MODELS_DIR if version == "baseline" else MODELS_DIR / "versions" / version
+        used = set(json.loads((folder / "metrics.json").read_text(encoding="utf-8")).get("source_counts", {}))
+    except (OSError, ValueError, KeyError):
+        return []
+    return [name for name in EXTERNAL_CORPORA
+            if name.lower() in used and not os.path.exists(os.path.join(EXTERNAL_DIR, f"{name}.csv"))]
+
+
 def _retrain(minimum: int) -> Dict[str, Any]:
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import precision_score, recall_score
     from src.train import load_and_preprocess_data, train_models
-    from src.predict import load_model, _LOADED_MODELS
+    from src.predict import load_model, decision_threshold, _LOADED_MODELS
 
     rows = get_trainable_feedback()
     if len(rows) < minimum:
         return {"success": False, "message": f"Review and approve at least {minimum} corrections before training."}
+    missing = missing_training_corpora()
+    if missing:
+        return {"success": False, "message": "The active model was trained with public corpora that are not on this server ("
+                + ", ".join(missing) + "). Run scripts/fetch_public_corpora.sh first, or the candidate would be trained on far less data."}
     try:
         # Fixed holdout of baseline examples; feedback never enters evaluation.
         baseline = load_and_preprocess_data().drop_duplicates("cleaned_text")
@@ -368,7 +389,8 @@ def _retrain(minimum: int) -> Dict[str, Any]:
         folder = MODELS_DIR / "versions" / version
         old = {}
         for name in ("nb", "svm"):
-            prediction = load_model(name).predict(holdout.cleaned_text)
+            # Compare like for like: the active model at its own recorded threshold.
+            prediction = (load_model(name).predict_proba(holdout.cleaned_text)[:, 1] >= decision_threshold(name)).astype(int)
             old[name] = {"precision_spam": precision_score(holdout.label_binary, prediction, zero_division=0),
                          "recall_spam": recall_score(holdout.label_binary, prediction, zero_division=0)}
         metrics = train_models(combined, output_dir=str(folder), test_data=holdout)

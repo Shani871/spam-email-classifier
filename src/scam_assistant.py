@@ -52,11 +52,11 @@ def _only_weak_wording(evidence, score):
     return score < 20 and len(titles) == 1 and titles <= WEAK_WORDING_TITLES
 
 
-def check_message(text, category="General message", sender="", company_domain="", previous_text="", headers=None, attachments=None, model_type="svm", previous_sender="", previous_reply_to="", previous_headers=None):
+def check_message(text, category="General message", sender="", company_domain="", previous_text="", headers=None, attachments=None, model_type="svm", previous_sender="", previous_reply_to="", previous_headers=None, sender_verified=False):
     text = str(text or "").strip()
     if not text and not headers and not attachments:
         return {"assessment": "Unable to assess", "summary": "Add message text or confirm extracted screenshot text to start.", "evidence": [], "limitations": ["No message content provided."], "score": None, "category": category}
-    report = compute_threat_intelligence(text, model_type=model_type, headers=headers, attachments=attachments)
+    report = compute_threat_intelligence(text, model_type=model_type, headers=headers, attachments=attachments, sender_verified=sender_verified)
     evidence = observed_evidence(report, text, headers)
     extra_score = 0
     from src.gmail_actions import check_sender_reputation
@@ -145,7 +145,8 @@ def check_message(text, category="General message", sender="", company_domain=""
         assessment = "Unable to assess"
     elif score >= 70:
         assessment = "High risk"
-    elif (evidence and not _only_weak_wording(evidence, score)) or score >= 40 or is_job or category == "Invoice or payment":
+    elif (evidence and not _only_weak_wording(evidence, score)) or score >= 40 or category in {"Job or internship", "Invoice or payment"} \
+            or (is_job and not sender_verified):
         assessment = "Needs verification"
     else:
         assessment = "No strong warning found"
@@ -164,6 +165,7 @@ def check_message(text, category="General message", sender="", company_domain=""
             "report": report, "job_check": is_job,
             "localized_summaries": localized_summaries,
             "payment_comparison": {"before": before, "after": after},
+            "sender_verified": bool(sender_verified),
             "conversation_comparison": conv_result}
 
 
@@ -184,7 +186,8 @@ def inbox_triage(message, model_type="svm"):
     try:
         result = check_message(message.get("full_text", ""), sender=message.get("sender", ""),
                                headers=message.get("headers"), attachments=message.get("attachments"),
-                               model_type=model_type)
+                               model_type=model_type,
+                               sender_verified=bool((message.get("sender_verification") or {}).get("verified")))
         return result["assessment"]
     except (FileNotFoundError, ValueError):
         return "Unable to assess"

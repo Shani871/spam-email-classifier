@@ -560,6 +560,8 @@ def scan_gmail_inbox(
             # Combined content for NLP classification
             full_text = f"Subject: {subject}\n\n{body}"
             headers = dict(msg.items())
+            from src.email_content import provider_sender_verification
+            sender_verification = provider_sender_verification(msg.items(), sender)
             attachments, html_parts = [], []
             for part in msg.walk():
                 if part.get_filename():
@@ -589,6 +591,7 @@ def scan_gmail_inbox(
                 "uidvalidity": uidvalidity,
                 "folder": folder,
                 "provider": "imap",
+                "sender_verification": sender_verification,
                 "prediction": pred["label"],
                 "confidence": pred["confidence"],
                 "prob_spam": pred["prob_spam"],

@@ -1,92 +1,114 @@
 # Model card: spam text classifier
 
-Trained and evaluated on 15 November 2026 with `python src/train.py` (scikit-learn 1.9.1, Python 3.12). The numbers below are copied from that run's output in `models/metrics.json` and from `output/model_selection/report.json`.
+Trained and evaluated on 18 November 2026 with `python src/train.py` (scikit-learn 1.9.1, Python 3.12). Numbers below are copied from that run's `models/metrics.json` and from `output/model_selection/report.json`.
 
 ## What the model is and is not
 
-A TF-IDF (word 1–2 grams) text classifier with two heads: a calibrated linear SVM (used by the app) and Multinomial Naive Bayes (shown for comparison). It answers "does this text look like historical spam?". It is one input to the app's assessment, contributing at most 45 of 100 risk points; links, sender headers, attachments and scam rules provide the rest.
+A TF-IDF (word 1–2 grams) text classifier with two heads: a calibrated linear SVM (used by the app) and Multinomial Naive Bayes (shown for comparison). It answers "does this text look like spam or phishing seen in public corpora?". It is one input to the app's assessment, worth at most 45 of 100 risk points, and fewer when the person's mail provider has authenticated the sender (see "How the app uses the score").
 
-It is not a fraud detector, it is English only, and it has not been validated on real present-day inboxes.
+It is not a fraud detector, it is English only, and nearly all of its training data is from 1997–2008.
 
 ## Data
 
-| Source | Rows used | Notes |
-|---|---|---|
-| Email benchmark (`dataset/spam.csv`, `dataset/emails.csv`) | 5,435 | Enron-era ham and spam; Enron-heavy ham capped at 25% of ham |
-| SMS benchmark (`dataset/spam.csv`) | 5,090 | UCI-style SMS spam collection |
-| Modern legitimate mail (`dataset/ham_diverse.csv`) | 140 | Curated, written examples; ham only |
-| **Total after cleaning** | **10,665** | 8,686 ham, 1,979 spam |
-
-Cleaning steps, in order: drop rows with missing text or label; remove exact duplicates on raw text; exclude 4,631 word-count reconstructions (below); cap Enron-heavy ham; normalise text (`src/preprocessing.py`); remove empty and duplicate normalised texts. Deduplication happens before the split, so one message cannot be on both sides.
-
-### Excluded: word-count reconstructions
-
-About a third of the previous training set was not message text. `dataset/emails-2.csv` is a word-count matrix, and earlier training rebuilt "messages" from it as vocabulary-ordered repeated words (`the the the to to ect ...`). Word order is lost and several columns count substrings. Five-fold cross-validation on the training partition, with validation folds containing real text only and the previous settings:
-
-| Training data | CV spam F1 | CV false positives | CV false negatives |
+| Source | Rows used | Period | Notes |
 |---|---|---|---|
-| Real text only | 0.9448 | 89 | 86 |
-| Real text + reconstructions | 0.9311 | 123 | 97 |
+| TREC 2007 | 23,085 | 2007 | Public spam track corpus |
+| TREC 2005 | 22,609 | 2001–2002 | Ham is largely Enron |
+| CEAS 2008 | 20,757 | 2008 | Spam challenge corpus; ham is mostly mailing lists |
+| Enron (spam/ham) | 20,697 | ~2000–2005 | |
+| TREC 2006 | 15,662 | 1997–2006 | |
+| SpamAssassin | 5,725 | 2002 | Includes "hard ham" (legitimate bulk mail) |
+| SMS spam collection | 5,090 | ~2011 | SMS, kept because people also paste SMS/WhatsApp messages |
+| Older project email set | 3,368 | Enron era | Already in the repository |
+| Nigerian fraud | 3,235 | 2003–2007 | Advance-fee scams, spam only |
+| Ling-Spam | 2,854 | ~2000 | |
+| Nazario phishing | 1,520 | 2016–2022 | Phishing only; the newest data |
+| Modern legitimate mail (written) | 140 | — | `dataset/ham_diverse.csv` |
+| **Total** | **124,742** | | 69,470 legitimate, 55,272 spam |
 
-They are now excluded from training and evaluation. `dataset/emails-2.csv` stays in the repository but is no longer read.
+The public corpora come from "Phishing Email Curated Datasets" by Champa, Rabbi and Zibran (Zenodo record 8339691, CC BY 4.0). They are downloaded with `scripts/fetch_public_corpora.sh` into `dataset/external/` (git-ignored, about 450 MB, checksums in `SHA256SUMS`). The `Nazario_5` and `Nigerian_5` files are not used because their legitimate rows are copies from the other sets.
+
+Cleaning, in order:
+- Keep rows labelled 0 or 1; text is subject plus the first 6,000 characters of the body.
+- Cap each corpus at 12,000 rows per label so no single corpus or era dominates.
+- Remove exact duplicates on raw text.
+- Drop 4,631 word-count reconstructions from `dataset/emails-2.csv` (not real messages; see the previous ablation in git history).
+- Cap Enron-heavy legitimate mail at 25% (not triggered this time) and normalise text (`src/preprocessing.py`).
+- Remove empty and duplicate normalised texts.
+
+All deduplication happens before the train/test split.
 
 ## Model selection
 
-`scripts/model_selection.py` ran 5-fold cross-validation on the 8,532 training rows only, over 56 combinations: vocabulary size (6,000 / 20,000 / 50,000 / 100,000), `min_df` (1 / 2), and LinearSVC (C 0.3 / 1 / 3), Logistic Regression (C 10 / 30) and Multinomial NB (alpha 0.1 / 0.5).
+`scripts/model_selection.py` ran 3-fold cross-validation on the 99,793 training rows only (the test set was not used), over 9 settings: vocabulary size, `min_df`, whether number/currency/URL placeholder tokens are kept, and classifier.
 
-| Classifier (best setting) | CV spam F1 | CV precision | CV recall |
+| Setting | CV spam F1 | CV precision | CV recall |
 |---|---|---|---|
-| LinearSVC, C=3, 100k features, min_df=2 (**chosen**) | 0.9599 | 0.9685 | 0.9514 |
-| Logistic Regression, C=30, 50k features | 0.9558 | 0.9564 | 0.9552 |
-| Multinomial NB, alpha=0.1, 50k features | 0.9337 | 0.9720 | 0.8984 |
-| Previous settings: LinearSVC, C=1, 6k features | 0.9448 | 0.9439 | 0.9457 |
+| LinearSVC C=1, 300k features, min_df 2 (**chosen**) | 0.9774 | 0.9759 | 0.9789 |
+| Same, min_df 5 | 0.9773 | 0.9760 | 0.9786 |
+| Same, placeholder tokens removed | 0.9764 | 0.9752 | 0.9775 |
+| LinearSVC C=1, 100k features | 0.9753 | 0.9744 | 0.9761 |
+| Logistic Regression C=30 | 0.9661 | 0.9612 | 0.9711 |
+| Multinomial NB alpha=0.1 | 0.9603 | 0.9719 | 0.9490 |
 
-The top few SVM settings are within about 0.002 F1 of each other, which is inside fold-to-fold noise; the practical gain is from the larger vocabulary.
+## Decision threshold
+
+The goal is to flag only spam, so the threshold is not 0.5. It is set to the lowest value at which at most 0.5% of legitimate training mail would be called spam, using out-of-fold predictions on the training partition only. The SVM threshold is 0.887 and the Naive Bayes threshold is 0.858. Both are stored in `metrics.json` and read by `src/predict.py`.
 
 ## Held-out test results
 
-2,133 rows (20%), stratified by source and class, never used for fitting or for the grid above.
+24,949 rows (20%), stratified by source and class.
 
-| Model | Accuracy | Spam precision | Spam recall | Spam F1 | ROC AUC | False positives | False negatives |
+| Model | Accuracy | Spam precision | Spam recall | Spam F1 | ROC AUC | Legitimate mail flagged | Spam missed |
 |---|---|---|---|---|---|---|---|
-| Linear SVM (calibrated) | 98.73% | 96.46% | 96.71% | 96.59% | 0.9960 | 14 of 1,738 ham | 13 of 395 spam |
-| Multinomial Naive Bayes | 97.42% | 98.02% | 87.85% | 92.66% | 0.9910 | 7 | 48 |
+| Linear SVM, threshold 0.887 | 96.93% | 99.52% | 93.52% | 96.43% | 0.9980 | 50 of 13,895 (0.36%) | 716 of 11,054 |
+| Linear SVM at 0.5, for comparison | — | 98.00% | 98.09% | — | — | 221 (1.6%) | — |
+| Naive Bayes, threshold 0.858 | 94.95% | 99.26% | 89.27% | 94.00% | 0.9947 | 74 | 1,186 |
 
-SVM errors by source: email 11 false positives and 5 false negatives (1,087 rows); SMS 3 and 8 (1,018 rows); modern legitimate mail 0 false positives (28 rows, too few to conclude anything).
+The higher threshold trades about 4.6 points of spam recall for 77% fewer false alarms.
 
-### Leakage checks
+SVM errors on modern phishing (Nazario, 2016–2022): 38 of 304 missed (87.5% caught). By corpus, legitimate mail flagged ranges from 0 (Ling, modern written ham) to 19 of 2,194 (TREC 2005) and 6 of 896 (SMS).
 
-- The vectorizer and both classifiers are fitted on the training partition only.
-- Exact duplicates are removed before splitting.
-- Near duplicates: 225 test rows (10.5%) have a training row with TF-IDF cosine similarity of 0.9 or more, typical of templated spam campaigns. On the other 1,908 rows the SVM scores 98.58% accuracy and 95.75% spam F1, so the headline figure does not depend on those near copies.
-- One caveat: an exploratory run earlier the same day compared data sources against a held-out split before the cross-validated ablation above was written. The final decision is supported by the cross-validation table, but the test set was not strictly untouched by that one choice.
+Leakage checks:
+- The vectorizer, classifiers and threshold are fitted on the training partition only.
+- 15.7% of a 6,000-row test sample has a training row with TF-IDF cosine similarity of 0.9 or more (templated campaigns). On the rest, SVM accuracy is 96.46% and spam F1 95.44%, close to the headline.
 
-### Not comparable with the previous figure
+## Test on real present-day email
 
-The earlier README figure (97.21% on 2,977 rows) was measured on a test set that included the reconstructed rows, so the two numbers describe different test sets. The cross-validation table is the like-for-like comparison.
+The question that matters is whether normal mail is flagged. 93 messages from the project owner's own Gmail inbox were used as a private test set, with their permission. Only the subject and first ~200 characters were used; they are not stored and were not used for training. They were scored as text only, without sender headers, which is harder than a real inbox scan.
 
-## Modern scam benchmark (29 written scenarios)
-
-`data/detection_evaluation_set.json`: 14 scams and 15 legitimate messages in English, Hindi and Hinglish. All are synthetic, and 29 is far too few for a rate.
-
-| | Scams flagged | Legitimate messages given a warning | Legitimate flagged High risk |
+| | Classifier says spam | App shows "Needs verification" | App shows "High risk" |
 |---|---|---|---|
-| Full assessment, before this work | 14 of 14 | 5 of 15 | 0 |
-| Full assessment, now | 14 of 14 | 3 of 15 | 0 |
-| Classifier alone (old and new) | 10 of 14 | 5 of 15 | n/a |
+| Previous model (15 Nov) | 20 of 93 | 14 | 0 |
+| New model, previous scoring | 14 | 23 | 0 |
+| New model and new scoring (current) | 14 | 12 | 0 |
 
-Retraining did not improve the classifier on these modern messages: it still misses 4 scams and flags 5 legitimate messages on its own. The drop from 5 to 3 false warnings comes from a rule change (one weak wording cue such as "urgent", with a score under 20, no longer raises the assessment), and that rule was adjusted with this benchmark in view. The 3 remaining false warnings are a job-interview follow-up and an invoice (both categories always ask for verification by design) and a utility statement the classifier scores as spam.
+The larger public dataset alone did not fix the complaint: old corpora associate money and account wording with spam, so present-day bank and UPI alerts still score near 1.0. The scoring changes below did most of the work. This sample was looked at three times while making these changes, so it is not a fully independent test.
+
+## How the app uses the score
+
+`src/ai_threat_intelligence.py`, `classifier_points`:
+- **Below the threshold:** the classifier adds at most 20 points, so wording alone cannot reach "Needs verification" (40).
+- **From the threshold to 1.0:** points rise from 20 to 45.
+- **Verified sender:** for messages read from the person's own mailbox, the provider's DMARC result for the From domain is read from the topmost `Authentication-Results` header (`provider_sender_verification`). When it is a pass, classifier points are multiplied by 0.4 and automatic job-keyword checks no longer force "Needs verification". Links, attachments, scam rules and the person's chosen category still count fully.
+  - Two of the flagged bank and lead-generation senders in the sample were confirmed to carry `dmarc=pass`. In a simulation, the four bank alerts still flagged as text drop to "No strong warning" when marked as verified.
+  - DMARC proves which domain sent a message, not that the mail is wanted: bulk senders and some spammers pass it too.
+  - Headers in pasted text and uploaded `.eml` files are never treated as verified.
+
+Modern scam benchmark (29 written scenarios): all 14 scams are still flagged; legitimate messages given a warning fell from 3 to 2; none are High risk. The classifier alone now catches 7 of 14 scams (it was 10 of 14), because of the higher threshold; the rule checks catch the rest.
 
 ## Known limits
 
-- Training text is mostly from the early 2000s (Enron email, SMS). Present-day notification, support and billing email is represented by 140 written examples. Expect false positives on that kind of mail; the app therefore never shows the classifier verdict alone as a warning.
-- No real phishing corpus, no non-English data, no evaluation on a live inbox.
-- Probabilities are sigmoid-calibrated on this corpus and should be read as a score, not a likelihood of fraud.
-- The model files are pickles tied to scikit-learn 1.9.1 (`requirements-lock.txt`).
+- Public corpora are old; present-day transactional mail is represented only by 140 written examples. Expect pasted bank alerts and receipts to still get "Needs verification" when there is no sender verification.
+- The 93-message inbox sample is small, from one person, and not fully independent of the tuning.
+- No non-English training data.
+- Model files are pickles tied to scikit-learn 1.9.1 (`requirements-lock.txt`) and are about 54 MB together.
+- Admin retraining from feedback refuses to run on a server without the public corpora, because the candidate would be trained on far less data.
 
 ## Reproduce
 
 ```sh
-.venv/bin/python scripts/model_selection.py   # about 6 minutes; writes output/model_selection/report.json
-.venv/bin/python src/train.py                 # writes models/*.pkl and models/metrics.json
+sh scripts/fetch_public_corpora.sh             # about 450 MB into dataset/external/
+.venv/bin/python scripts/model_selection.py    # about 8 minutes
+.venv/bin/python src/train.py                  # about 5 minutes
 ```

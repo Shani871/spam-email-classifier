@@ -1,6 +1,6 @@
 # Deployment and maintenance
 
-This describes the single-server deployment shipped in this repository: the app in a container, Caddy in front for HTTPS, and one volume for all state. Status of each part is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md); in particular, the container image has not been built yet (see "Verification status" below).
+This describes the single-server deployment shipped in this repository: the app in a container, Caddy in front for HTTPS, and one volume for all state. Status of each part is in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md); the image builds and starts in CI, but the full stack has not been run on a server (see "Verification status" below).
 
 ## Architecture
 
@@ -116,7 +116,8 @@ The baseline model in the image replaces the baseline on the volume at every sta
 ## Retraining
 
 - From reviewed feedback: Advanced > Feedback and training (admin). A candidate is released only if spam precision and recall do not drop by more than 0.005 on a fixed hold-out.
-- From scratch: `python scripts/model_selection.py` then `python src/train.py` on a development machine, commit `models/`, redeploy. See [MODEL_CARD.md](MODEL_CARD.md).
+- From scratch: `sh scripts/fetch_public_corpora.sh`, then `python scripts/model_selection.py` and `python src/train.py` on a development machine, commit `models/`, redeploy. See [MODEL_CARD.md](MODEL_CARD.md).
+- The feedback retraining button refuses to run on a server without the downloaded corpora, since the candidate would be trained on far less data than the active model. Run the fetch script on the server first if you want to retrain there.
 
 ## Running without Docker
 
@@ -130,4 +131,8 @@ Put any HTTPS reverse proxy in front, set `SPAMGUARD_ENV=production` and `SPAMGU
 
 ## Verification status
 
-Tested on the development machine: the application, the test suite, the start-up configuration logic, and the backup of linked state directories. Not run anywhere yet: `docker build`, `docker compose up`, certificate issuance, and Google sign-in against a real OAuth client, because the development machine has no Docker and no domain or credentials were available. The `container` job in `.github/workflows/tests.yml` builds the image, waits for the health check and runs a prediction inside it on every push; treat the deployment as unverified until that job has passed once.
+Tested on the development machine: the application, the test suite, the start-up configuration logic, and the backup of linked state directories.
+
+Tested in GitHub Actions (commit `b596d72`): the image builds, the app container reaches a healthy state, a prediction runs inside it, and it refuses to start with a weak cookie secret. The `container` job in `.github/workflows/tests.yml` repeats this on every push.
+
+Not run anywhere yet: `docker compose up` with Caddy, certificate issuance, the backup container, and Google sign-in against a real OAuth client, because no server, domain or credentials were available.

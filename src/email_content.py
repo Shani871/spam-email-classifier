@@ -40,6 +40,34 @@ def address_domain(address):
     return parsed.rsplit("@", 1)[-1].lower() if "@" in parsed else ""
 
 
+def provider_sender_verification(header_items, from_address=""):
+    """Reads the receiving mail provider's DMARC verdict for the From domain.
+
+    `header_items` must be the message's headers in their original order. Providers add
+    their Authentication-Results header at the top, so only the FIRST one is used: any
+    lower copy may have been written by the sender and is ignored. Use this only for
+    messages fetched from the person's own mailbox; headers in uploaded or pasted mail
+    are claims, not provider results.
+
+    Returns {"verified": bool, "domain": str, "dmarc": str, "reported_by": str}.
+    """
+    import re
+    result = {"verified": False, "domain": "", "dmarc": "none", "reported_by": ""}
+    first = next((str(value) for name, value in header_items or [] if str(name).lower() == "authentication-results"), "")
+    if not first:
+        return result
+    first = " ".join(first.split())
+    result["reported_by"] = first.split(";", 1)[0].strip()[:80]
+    dmarc = re.search(r"\bdmarc=(\w+)", first, re.I)
+    header_from = re.search(r"\bdmarc=\w+[^;]*?\bheader\.from=([A-Za-z0-9.-]+)", first, re.I)
+    result["dmarc"] = dmarc.group(1).lower() if dmarc else "none"
+    domain = header_from.group(1).lower().rstrip(".") if header_from else ""
+    sender_domain = address_domain(from_address)
+    result["domain"] = domain
+    result["verified"] = bool(result["dmarc"] == "pass" and domain and domain == sender_domain)
+    return result
+
+
 def domain_from_url(url):
     try:
         return (urlsplit(url if "://" in url else "https://" + url).hostname or "").encode("idna").decode().lower()

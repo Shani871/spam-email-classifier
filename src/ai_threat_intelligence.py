@@ -13,11 +13,35 @@ from src.security_analyzer import inspect_email_security
 from src.attachment_analyzer import inspect_email_attachments
 
 
+CLASSIFIER_MAX_POINTS = 45.0
+CLASSIFIER_POINTS_AT_THRESHOLD = 20.0
+VERIFIED_SENDER_WEIGHT = 0.4
+
+
+def classifier_points(prob_spam: float, threshold: float = 0.5, sender_verified: bool = False) -> float:
+    """Risk points from the text classifier (0-45).
+
+    Below the classifier's own spam threshold it adds at most 20 points, so wording alone
+    cannot reach "Needs verification" (40) unless the classifier is confident. From the
+    threshold up to 1.0 it rises to 45. When the mail provider confirmed the sender's
+    domain, the points are scaled by 0.4: authenticated bank alerts and receipts use the
+    same money and account words as old spam.
+    """
+    threshold = min(max(float(threshold or 0.5), 0.5), 0.99)
+    p = min(max(float(prob_spam), 0.0), 1.0)
+    if p < threshold:
+        points = CLASSIFIER_POINTS_AT_THRESHOLD * p / threshold
+    else:
+        points = CLASSIFIER_POINTS_AT_THRESHOLD + (CLASSIFIER_MAX_POINTS - CLASSIFIER_POINTS_AT_THRESHOLD) * (p - threshold) / (1 - threshold)
+    return points * (VERIFIED_SENDER_WEIGHT if sender_verified else 1.0)
+
+
 def compute_threat_intelligence(
     email_text: str,
     model_type: str = "nb",
     headers: Optional[Dict[str, str]] = None,
-    attachments: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None,
+    sender_verified: bool = False
 ) -> Dict[str, Any]:
     """
     Evaluates an email using both ML classification and deep security forensics.
@@ -42,12 +66,13 @@ def compute_threat_intelligence(
     auth_info = forensics["authentication_forensics"]
 
     # 3. Calculate Threat Score (0 - 100)
-    # Start with ML model probability (scaled 0 to 45)
     ml_prob = ml_result["prob_spam"]
-    score = ml_prob * 45.0
+    score = classifier_points(ml_prob, ml_result.get("threshold", 0.5), sender_verified)
 
     tactics_detected = []
     advisories = []
+    if sender_verified:
+        advisories.append("Your mail provider confirmed the sender's domain (DMARC pass). Wording-based spam scoring counts less; links, attachments and requests are still checked.")
 
     # Threat boost from URL Forensics
     if url_info["has_deceptive_link"]:
@@ -165,6 +190,7 @@ def compute_threat_intelligence(
         "attack_vector": attack_vector,
         "is_action_required": final_score >= 50,
         "ml_result": ml_result,
+        "sender_verified": bool(sender_verified),
         "url_forensics": url_info,
         "psychological_forensics": psycho_info,
         "authentication_forensics": auth_info,

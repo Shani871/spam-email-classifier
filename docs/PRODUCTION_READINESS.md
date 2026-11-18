@@ -4,7 +4,7 @@ Date: 15 November 2026. This records what was changed, what was tested and how, 
 
 ## Verdict
 
-The application runs, its tests pass, and the main security gaps found in the audit are closed. It is not yet proven as a public deployment: the container image has never been built, no domain or Google credentials were available, and the classifier is trained on old public corpora. The items under "Open before public launch" need doing first.
+The application runs, its tests pass, and the main security gaps found in the audit are closed. It is not yet proven as a public deployment: the container image builds and starts in CI, but the full stack has never run on a server with a real domain, no Google credentials were available, and the classifier is trained on old public corpora. The items under "Open before public launch" need doing first.
 
 ## Test and validation results
 
@@ -17,8 +17,11 @@ The application runs, its tests pass, and the main security gaps found in the au
 | Real mailbox scan | Confirmed by the owner on their own inbox after the labelling fix; not retested after the later changes |
 | Phone width (375 px) | No horizontal overflow on the Check page; other pages not inspected at this width |
 | Browser console | No errors on a clean load |
-| Model training | Run; results in [MODEL_CARD.md](MODEL_CARD.md) |
-| Docker build, Compose stack, HTTPS, Google sign-in | Not run (no Docker, domain or credentials on this machine) |
+| Model training | Retrained 18 November on 124,742 public messages; results in [MODEL_CARD.md](MODEL_CARD.md) |
+| False alarms on real present-day mail | 93-message sample from the owner's inbox, text only: "Needs verification" 14 → 12, High risk 0. Bank alerts with a provider-verified sender drop to "No strong warning"; the owner rescanned their inbox in the app on 18 November and confirmed normal mail is no longer flagged |
+| Tests on Linux with pinned requirements | Passed in GitHub Actions for commit `b596d72` (run 43684267809, `test` job) |
+| Docker image build and start | Passed in the same run (`container` job): image builds, container becomes healthy, the model classifies inside it, and start-up is refused with a weak cookie secret |
+| Compose stack, Caddy and HTTPS, backup container, Google sign-in | Not run (no Docker, domain or credentials on the development machine; CI starts the app container alone) |
 | Load or concurrency testing | Not done |
 | Accessibility audit | Not done |
 
@@ -57,7 +60,7 @@ New tests in this round (`tests/test_production_hardening.py`, `tests/test_scam_
 | Larger, more representative training data | Not done. Only the data in `dataset/` was used; no new corpus was downloaded. This is the main limit on model quality. |
 | API endpoint verification | There are no HTTP APIs beyond Streamlit's own; the health endpoint is the only one relied on. |
 | Role-based access control | Two roles exist (user, admin by verified email). Nothing finer was added. |
-| Docker build and deployment verification | Files written; not executed. |
+| Docker build and deployment verification | Image build and single-container start verified in CI. The Compose stack and a real deployment have not been run. |
 | Domain, HTTPS certificate, Google OAuth verification | Need accounts and decisions only the owner can provide. |
 | End-to-end tests against a real Gmail account | Not possible without credentials. |
 
@@ -70,11 +73,11 @@ Done and verified
 - [x] No secrets in the working tree; `.env` and `secrets.toml` ignored
 - [x] TLS verification, endpoint validation and rate limits covered by tests
 - [x] Telemetry off, XSRF on
+- [x] Container image builds and passes its health check (CI, commit `b596d72`)
+- [x] `requirements-lock.txt` installs on Linux and the tests pass there (CI, commit `b596d72`)
 
 Done, not yet verified
-- [ ] Container image builds and passes its health check (CI job will show this on the next push)
 - [ ] Compose stack serves the app over HTTPS on a real domain
-- [ ] `requirements-lock.txt` installs cleanly on Linux (it was generated on macOS)
 - [ ] Daily backup container produces restorable archives on the volume
 
 Open before public launch
