@@ -3,6 +3,7 @@ import time
 import uuid
 import streamlit as st
 from src.user_storage import user_scope, purge_expired_records
+from src.i18n import t
 
 st.set_page_config(page_title="SpamGuard AI · Check before you trust", page_icon=":material/shield:", layout="centered",
                    initial_sidebar_state="auto")
@@ -32,22 +33,25 @@ for key, default in {"language": "English", "result": None, "checked_text": "", 
     st.session_state.setdefault(key, default)
 
 with st.sidebar:
-    st.selectbox("Language / भाषा", ["English", "Hindi", "Hinglish"], key="language")
-    st.caption(":material/lock: Messages are checked on this server. Nothing is sent to an outside AI service, and nothing is saved unless you turn it on in Settings.")
+    # The choice is mirrored into "language" so it survives page changes (widget state alone does not).
+    st.session_state["_language_choice"] = st.session_state.language
+    st.selectbox("Language / भाषा", ["English", "Hindi", "Hinglish"], key="_language_choice",
+                 on_change=lambda: st.session_state.update(language=st.session_state._language_choice))
+    st.caption(":material/lock: " + t("Messages are checked on this server. Nothing is sent to an outside AI service, and nothing is saved unless you turn it on in Settings."))
 
 navigation = st.navigation({
-    "Check a message": [
-        st.Page("app_pages/check.py", title="Check", icon=":material/search:", default=True,
-                help="Paste a message, upload an email or screenshot, or scan your inbox."),
-        st.Page("app_pages/understand.py", title="Result", icon=":material/fact_check:", url_path="understand",
-                help="The verdict for the last message you checked, and the evidence behind it."),
-        st.Page("app_pages/action.py", title="What to do", icon=":material/task_alt:", url_path="action",
-                help="Steps to take for your situation, where to report, and how to correct a wrong result.")],
-    "More": [
-        st.Page("app_pages/settings.py", title="Settings", icon=":material/settings:", url_path="settings",
-                help="Connect your inbox, privacy and saved data, and trusted or blocked senders."),
-        st.Page("app_pages/advanced.py", title="Advanced", icon=":material/tune:", url_path="advanced",
-                help="Model results, benchmark, batch CSV checks, feedback review and inbox monitor.")]
+    t("Check a message"): [
+        st.Page("app_pages/check.py", title=t("Check"), icon=":material/search:", default=True,
+                help=t("Paste a message, upload an email or screenshot, or scan your inbox.")),
+        st.Page("app_pages/understand.py", title=t("Result"), icon=":material/fact_check:", url_path="understand",
+                help=t("The verdict for the last message you checked, and the evidence behind it.")),
+        st.Page("app_pages/action.py", title=t("What to do"), icon=":material/task_alt:", url_path="action",
+                help=t("Steps to take for your situation, where to report, and how to correct a wrong result."))],
+    t("More"): [
+        st.Page("app_pages/settings.py", title=t("Settings"), icon=":material/settings:", url_path="settings",
+                help=t("Connect your inbox, privacy and saved data, and trusted or blocked senders.")),
+        st.Page("app_pages/advanced.py", title=t("Advanced"), icon=":material/tune:", url_path="advanced",
+                help=t("Model results, benchmark, batch CSV checks, feedback review and inbox monitor."))]
 })
 with user_scope(identity):
     navigation.run()

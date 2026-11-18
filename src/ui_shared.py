@@ -4,7 +4,8 @@ import json
 import os
 import streamlit as st
 from src.user_storage import read_json, update_json
-from src.scam_assistant import check_message, ASSESSMENTS
+from src.scam_assistant import check_message
+from src.i18n import t
 
 
 def md_escape(value):
@@ -92,14 +93,14 @@ def result_required():
     result = st.session_state.get("result")
     if not result:
         with st.container(border=True, horizontal_alignment="center"):
-            st.info("Check a message first. Your result and next steps will appear here.", icon=":material/info:")
-            st.page_link("app_pages/check.py", label="Check a message", icon=":material/search:")
+            st.info(t("Check a message first. Your result and next steps will appear here."), icon=":material/info:")
+            st.page_link("app_pages/check.py", label=t("Check a message"), icon=":material/search:")
         st.stop()
         raise SystemExit(0)
     return result
 
 
-# Plain-language verdicts. Hindi and Hinglish fall back to the translated labels below.
+# Plain-language verdicts (English keys; translated through src/i18n.py).
 VERDICTS = {
     "High risk": ("error", ":material/gpp_bad:", "Likely a scam",
                   "Don't click links, reply, pay, or share codes or passwords."),
@@ -109,21 +110,6 @@ VERDICTS = {
                                 "It looks normal. Stay careful with links and payment requests as usual."),
     "Unable to assess": ("info", ":material/info:", "Not enough to go on",
                          "Add more of the message, or the sender's address, and check again."),
-}
-
-_TRANSLATED_ACTIONS = {
-    "Hindi": {
-        "High risk": "पैसे भेजने या जानकारी साझा करने से पहले रुकें",
-        "Needs verification": "स्वतंत्र रूप से पुष्टि करें",
-        "No strong warning found": "प्रेषक अभी भी असत्यापित है",
-        "Unable to assess": "अधिक संदर्भ आवश्यक",
-    },
-    "Hinglish": {
-        "High risk": "Paise dene ya details share karne se pehle ruko",
-        "Needs verification": "Independently confirm karein",
-        "No strong warning found": "Sender verify nahi hua hai",
-        "Unable to assess": "Zyada context chahiye",
-    },
 }
 
 
@@ -139,24 +125,16 @@ def quote_with_highlight(sentence, match):
 
 def assessment_card(result, compact=False):
     """The verdict in one coloured box: what it is, and what to do now. `compact` hides the score."""
-    language = st.session_state.get("language", "English")
     key = result["assessment"]
     kind, icon, title, action = VERDICTS.get(key, VERDICTS["Unable to assess"])
-    if language != "English":
-        title = ASSESSMENTS.get(language, ASSESSMENTS["English"]).get(key, key)
-        action = _TRANSLATED_ACTIONS.get(language, {}).get(key, action)
-    getattr(st, kind)(f"**{title}**  \n{action}", icon=icon)
+    getattr(st, kind)(f"**{t(title)}**  \n{t(action)}", icon=icon)
     if result.get("score") is not None and not compact:
         score = int(result["score"])
-        label = {"English": "Risk indicator", "Hindi": "जोखिम सूचक", "Hinglish": "Risk indicator"}.get(language, "Risk indicator")
         color = {"error": "red", "warning": "orange", "success": "green"}.get(kind, "gray")
-        st.markdown(f":{color}-badge[:material/speed: {label}: {score}/100]")
-        st.caption({
-            "Hindi": "उच्च स्कोर का मतलब अधिक संदिग्ध संकेत। यह एक संकेतक है, गारंटीकृत निर्णय नहीं।",
-            "Hinglish": "Score zyada matlab zyada suspicious cues. Yeh indicator hai, guarantee nahi.",
-        }.get(language, "Higher means more warning signs were found. It is an indicator, not a guarantee."))
-    if language != "English":
-        st.caption("Key guidance and labels are translated. Technical evidence remains in original English; coverage limitations apply.")
+        st.markdown(f":{color}-badge[:material/speed: {t('Risk indicator')}: {score}/100]")
+        st.caption(t("Higher means more warning signs were found. It is an indicator, not a guarantee."))
+    if st.session_state.get("language", "English") != "English":
+        st.caption(t("Quotes from the message and some technical details stay in their original language."))
 
 
 STEPS = [
@@ -171,16 +149,17 @@ def step_tracker(current_step: int):
     parts = []
     has_result = bool(st.session_state.get("result"))
     for index, (title, icon) in enumerate(STEPS, 1):
+        label = t(title)
         if index < current_step and has_result:
-            parts.append(f":green-badge[:material/check: {title}]")
+            parts.append(f":green-badge[:material/check: {label}]")
         elif index == current_step:
-            parts.append(f":blue-badge[{icon} {index}. {title}]")
+            parts.append(f":blue-badge[{icon} {index}. {label}]")
         else:
-            parts.append(f":gray-badge[{index}. {title}]")
+            parts.append(f":gray-badge[{index}. {label}]")
     st.markdown(" :material/chevron_right: ".join(parts))
 
 
 def download_result(result):
     export = {key: value for key, value in result.items() if key != "report"}
-    st.download_button("Download this result", json.dumps(export, ensure_ascii=False, indent=2),
+    st.download_button(t("Download this result"), json.dumps(export, ensure_ascii=False, indent=2),
                        file_name="spamguard-assessment.json", mime="application/json", icon=":material/download:")

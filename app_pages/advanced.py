@@ -5,6 +5,9 @@ import streamlit as st
 from src.ui_shared import is_admin
 
 st.title("Advanced")
+if st.session_state.get("language", "English") != "English":
+    from src.i18n import t
+    st.caption(":material/translate: " + t("This page is available in English only."))
 st.caption("Tools for checking the model, checking many messages at once, reviewing feedback and monitoring an inbox.")
 TOOL_ICONS = {"Model comparison": ":material/analytics:", "Modern detection benchmark": ":material/rule:", "Preprocessing inspector": ":material/text_fields:",
               "Batch CSV check": ":material/table_view:", "Feedback and training": ":material/school:", "Inbox monitor": ":material/monitor_heart:"}

@@ -181,6 +181,9 @@ def test_app_pages_importable():
     import pathlib
     pages_dir = pathlib.Path(__file__).parent.parent / "app_pages"
     failures = []
+    real_streamlit = sys.modules.get("streamlit")
+    stubbed_src = [name for name in ("src.ui_shared", "src.i18n") if name in sys.modules]
+    saved_src = {name: sys.modules[name] for name in stubbed_src}
     for path in sorted(pages_dir.glob("*.py")):
         module_name = f"app_pages.{path.stem}"
         sys.modules.pop(module_name, None)
@@ -193,6 +196,15 @@ def test_app_pages_importable():
             failures.append(f"{path.name}: {exc}")
         finally:
             sys.modules.pop(module_name, None)
+
+    # Put the real Streamlit back so later tests (AppTest) are not run against the stub.
+    if real_streamlit is not None:
+        sys.modules["streamlit"] = real_streamlit
+    else:
+        sys.modules.pop("streamlit", None)
+    for name in ("src.ui_shared", "src.i18n"):
+        sys.modules.pop(name, None)
+    sys.modules.update(saved_src)
 
     assert not failures, "app_pages modules failed to import:\n" + "\n".join(failures)
 

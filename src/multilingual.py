@@ -308,3 +308,72 @@ def get_language_limitations(language: str) -> List[str]:
         "The spam model was evaluated on an English benchmark, not all modern scam types.",
         "Attachments are checked by metadata only; file contents are not scanned for malware."
     ]
+
+
+# Warning types added after the original table (same structure: title and advice per language).
+_WORDING_ADVICE = {
+    "Hindi": "ऐसे शब्द असली संदेशों में भी हो सकते हैं। अनुरोध की स्वतंत्र रूप से पुष्टि करें।",
+    "Hinglish": "Aise words asli messages mein bhi ho sakte hain. Request ko independently verify karein.",
+}
+EVIDENCE_LOCALIZATIONS.update({
+    "Time pressure language": {
+        "Hindi": {"title": "समय का दबाव बनाने वाली भाषा", "advice": _WORDING_ADVICE["Hindi"]},
+        "Hinglish": {"title": "Time pressure wali language", "advice": _WORDING_ADVICE["Hinglish"]},
+    },
+    "Threat or security-alert language": {
+        "Hindi": {"title": "धमकी या सुरक्षा-चेतावनी वाली भाषा", "advice": _WORDING_ADVICE["Hindi"]},
+        "Hinglish": {"title": "Dhamki ya security alert wali language", "advice": _WORDING_ADVICE["Hinglish"]},
+    },
+    "Payment or financial language": {
+        "Hindi": {"title": "भुगतान या पैसों से जुड़ी भाषा", "advice": _WORDING_ADVICE["Hindi"]},
+        "Hinglish": {"title": "Payment ya paison se judi language", "advice": _WORDING_ADVICE["Hinglish"]},
+    },
+    "Prize or reward language": {
+        "Hindi": {"title": "इनाम या पुरस्कार वाली भाषा", "advice": _WORDING_ADVICE["Hindi"]},
+        "Hinglish": {"title": "Inaam ya reward wali language", "advice": _WORDING_ADVICE["Hinglish"]},
+    },
+    "Displayed link and destination differ": {
+        "Hindi": {"title": "दिखाया गया लिंक और असली पता अलग हैं",
+                  "advice": "दिखाए गए टेक्स्ट पर भरोसा न करें; लिंक असल में किसी और पते पर ले जाता है। उसे न खोलें।"},
+        "Hinglish": {"title": "Dikhaya gaya link aur asli address alag hain",
+                     "advice": "Dikhaye gaye text par bharosa na karein; link asal mein kisi aur address par le jata hai. Use na kholein."},
+    },
+    "Link destination has warning indicators": {
+        "Hindi": {"title": "लिंक के पते में चेतावनी संकेत",
+                  "advice": "सिर्फ़ डोमेन देखकर यह साबित नहीं होता कि लिंक खतरनाक है, पर इसे खोलने से पहले सावधान रहें।"},
+        "Hinglish": {"title": "Link ke address mein warning signs",
+                     "advice": "Sirf domain se yeh saabit nahi hota ki link khatarnak hai, par ise kholne se pehle dhyan rakhein."},
+    },
+    "Header declares SPF failure": {
+        "Hindi": {"title": "हेडर में SPF विफलता दर्ज है", "advice": "ईमेल प्रदाता से प्रमाणीकरण के नतीजों की पुष्टि करें।"},
+        "Hinglish": {"title": "Header mein SPF failure likha hai", "advice": "Email provider se authentication results confirm karein."},
+    },
+    "Sender and reply address use different domains": {
+        "Hindi": {"title": "प्रेषक और जवाब देने का पता अलग-अलग डोमेन के हैं",
+                  "advice": "अलग जवाब-पता असली भी हो सकता है; जवाब देने से पहले पुष्टि करें कि जवाब सही व्यक्ति को जाएगा।"},
+        "Hinglish": {"title": "Sender aur reply address alag domains ke hain",
+                     "advice": "Alag reply address asli bhi ho sakta hai; reply karne se pehle confirm karein ki jawab sahi insaan ko jayega."},
+    },
+    "Attachment filename has warning indicators": {
+        "Hindi": {"title": "अटैचमेंट के नाम में चेतावनी संकेत", "advice": "फ़ाइल न खोलें। फ़ाइल की सामग्री स्कैन नहीं की गई है।"},
+        "Hinglish": {"title": "Attachment ke naam mein warning signs", "advice": "File na kholein. File ka content scan nahi kiya gaya hai."},
+    },
+    "Sender differs from the supplied company domain": {
+        "Hindi": {"title": "प्रेषक आपके बताए कंपनी डोमेन से अलग है",
+                  "advice": "बाहरी रिक्रूटर असली भी हो सकते हैं। कंपनी से स्वतंत्र रूप से पुष्टि करें।"},
+        "Hinglish": {"title": "Sender aapke bataye company domain se alag hai",
+                     "advice": "Bahar ke recruiters asli bhi ho sakte hain. Company se independently confirm karein."},
+    },
+    "Link differs from the supplied company domain": {
+        "Hindi": {"title": "लिंक आपके बताए कंपनी डोमेन से अलग है",
+                  "advice": "देखें कि क्या कंपनी आधिकारिक रूप से इस बाहरी सेवा का इस्तेमाल करती है।"},
+        "Hinglish": {"title": "Link aapke bataye company domain se alag hai",
+                     "advice": "Check karein ki company officially is bahari service ko use karti hai ya nahi."},
+    },
+    "Fake legal notice / traffic challan threat": {
+        "Hindi": {"title": "नकली कानूनी नोटिस / ट्रैफ़िक चालान की धमकी",
+                  "advice": "कोर्ट समन या ट्रैफ़िक चालान सिर्फ़ सरकारी पोर्टल (जैसे echallan.parivahan.gov.in) पर निपटाए जाते हैं। निजी नंबरों पर कॉल न करें।"},
+        "Hinglish": {"title": "Fake legal notice / traffic challan ki dhamki",
+                     "advice": "Court summons ya traffic challan sirf government portal (jaise echallan.parivahan.gov.in) par settle hote hain. Personal numbers par call na karein."},
+    },
+})
