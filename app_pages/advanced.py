@@ -5,14 +5,16 @@ import streamlit as st
 from src.ui_shared import is_admin
 
 st.title("Advanced")
-st.caption("Optional tools for evaluation, learning, batch checks, and monitoring.")
-tool = st.selectbox("Tool", ["Model comparison", "Modern detection benchmark", "Preprocessing inspector", "Batch CSV check", "Feedback and training", "Inbox monitor"])
+st.caption("Tools for checking the model, checking many messages at once, reviewing feedback and monitoring an inbox.")
+TOOL_ICONS = {"Model comparison": ":material/analytics:", "Modern detection benchmark": ":material/rule:", "Preprocessing inspector": ":material/text_fields:",
+              "Batch CSV check": ":material/table_view:", "Feedback and training": ":material/school:", "Inbox monitor": ":material/monitor_heart:"}
+tool = st.selectbox("Tool", list(TOOL_ICONS), format_func=lambda t: f"{TOOL_ICONS[t]} {t}")
 root = Path(__file__).resolve().parents[1]
 if tool == "Modern detection benchmark":
     from src.detection_evaluation import evaluate_detection
-    st.subheader("Modern detection evaluation")
+    st.subheader("Modern detection evaluation", anchor=False)
     st.caption("A curated evaluation set of realistic modern scams and genuine messages (including urgent business emails, Hindi, and Hinglish).")
-    st.info("Synthetic benchmark notice: All test samples are realistic synthetic scenarios based on FTC, CERT-In, and observed fraud patterns. This evaluation does not make unsupported claims of 100% protection against unknown real-world fraud.", icon=":material/info:")
+    st.caption("Synthetic benchmark notice: All test samples are realistic synthetic scenarios based on FTC, CERT-In, and observed fraud patterns. This evaluation does not make unsupported claims of 100% protection against unknown real-world fraud.")
     eval_res = evaluate_detection()
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
@@ -28,7 +30,7 @@ if tool == "Modern detection benchmark":
 
     st.caption("Benchmark isolation: " + eval_res.get("evaluation_independence_disclosure", "This benchmark is kept strictly separate from the historical training dataset."))
 
-    st.subheader("Results by language")
+    st.subheader("Results by language", anchor=False)
     lang_rows = []
     for lang, lstats in eval_res["by_language"].items():
         lang_rows.append({
@@ -133,11 +135,11 @@ elif tool == "Feedback and training":
         get_trainable_feedback
     )
     user_rows = get_feedback_records()
-    st.subheader("Your corrections")
+    st.subheader("Your corrections", anchor=False)
     st.caption("Corrections submitted in this account. Deleting feedback removes it from your storage and the review queue.")
-    st.info("Consent & Model Limitations: Deleting stored feedback removes it from the review queue and future model training, but does NOT retroactively remove its influence from an already trained and deployed model release. To revert a deployed release, an administrator must perform a model rollback.", icon=":material/privacy_tip:")
+    st.caption("Consent & Model Limitations: Deleting stored feedback removes it from the review queue and future model training, but does NOT retroactively remove its influence from an already trained and deployed model release. To revert a deployed release, an administrator must perform a model rollback.")
     if not user_rows:
-        st.info("No saved corrections in this account. Add one from Take action.")
+        st.caption("No corrections yet. You can send one from What to do, under \"Was this result wrong?\".")
     else:
         st.dataframe(user_rows, hide_index=True)
         with st.expander("Manage your saved feedback"):
@@ -160,12 +162,12 @@ elif tool == "Feedback and training":
 
     if is_admin():
         st.divider()
-        st.subheader("Administrator Review Queue")
-        st.caption("Authorized review queue. Submissions appear here ONLY if the user gave explicit consent. Missing consent strictly defaults to false.")
+        st.subheader("Review queue (administrator)", anchor=False)
+        st.caption("Only corrections whose senders agreed to share them appear here.")
         admin_queue = get_admin_feedback_queue(admin_user=True)
         pending = [r for r in admin_queue if not r.get("approved") and not r.get("rejected") and r.get("consent_given", False)]
         if not pending:
-            st.info("No pending consented feedback awaiting administrator review.")
+            st.caption("Nothing waiting for review.")
         else:
             st.dataframe(pending, hide_index=True)
             selected = st.selectbox("Correction to review (consented only)", [r["id"] for r in pending], format_func=lambda ident: next(f"[{r.get('user_label', '').upper()}] {r['text'][:90]}…" for r in pending if r["id"] == ident))
@@ -185,7 +187,7 @@ elif tool == "Feedback and training":
                     st.warning("Correction rejected. It will not be used in future training.")
                     st.rerun()
 
-        st.subheader("Model release management")
+        st.subheader("Model releases", anchor=False)
         trainable_count = len(get_trainable_feedback())
         st.caption(f"Currently eligible approved & consented corrections ready for training: **{trainable_count}**.")
         confirmed = st.checkbox("Release the candidate only if it passes the fixed evaluation gates")
@@ -197,7 +199,7 @@ elif tool == "Feedback and training":
             if rollback_model(admin_user=True):
                 st.success("Previous model restored.")
             else:
-                st.info("No previous release is available.")
+                st.caption("There is no earlier release to go back to.")
     else:
         st.caption("An administrator must review feedback across accounts and release models. Deployment setup is described in docs/SETUP.md.")
 elif tool == "Inbox monitor":
@@ -210,7 +212,7 @@ elif tool == "Inbox monitor":
     if mode == "Connected app-password inbox":
         credentials = st.session_state.get("imap_credentials")
         if not credentials:
-            st.info("Connect with an app password in Settings first. OAuth inbox checks are available on Check a message.")
+            st.info("Connect with an app password in Settings first.", icon=":material/link:")
             st.stop()
         if worker.email_address != credentials["email_address"]:
             worker.stop()

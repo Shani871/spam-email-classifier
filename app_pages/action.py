@@ -5,25 +5,34 @@ from src.scam_assistant import recovery_steps
 from src.active_learning import record_feedback
 
 step_tracker(3)
-st.title("Choose your next step")
+st.title("What to do now")
 result = result_required()
-assessment_card(result)
-st.subheader("Incident Containment & Recovery")
-stage = st.selectbox("Select your current situation", ["Only received the message", "Clicked a link", "Shared a password or OTP", "Sent money or payment details"])
+assessment_card(result, compact=True)
+
+SITUATIONS = {
+    "Only received the message": ":material/mail: I only received it",
+    "Clicked a link": ":material/ads_click: I clicked a link",
+    "Shared a password or OTP": ":material/password: I shared a password or code",
+    "Sent money or payment details": ":material/payments: I sent money or card details",
+}
+stage = st.pills("What has happened so far?", list(SITUATIONS), default="Only received the message", key="situation",
+                 format_func=SITUATIONS.get) or "Only received the message"
 with st.container(border=True):
-    st.markdown("#### :material/security: Recommended Containment Actions")
+    st.markdown("**:material/checklist: Do this now**")
     for index, step in enumerate(recovery_steps(stage, st.session_state.language), 1):
-        st.markdown(f"**{index}.** {step}")
+        st.markdown(f"{index}. {step}")
+
+st.subheader("Report it", anchor=False)
 with st.container(horizontal=True):
-    st.link_button("India: Report Cybercrime (1930 / cybercrime.gov.in)", "https://cybercrime.gov.in/", icon=":material/gavel:")
-    st.link_button("USA: Report Scam (FTC / reportfraud.ftc.gov)", "https://consumer.ftc.gov/articles/what-do-if-you-were-scammed", icon=":material/policy:")
-st.caption("Region-specific: cybercrime.gov.in and helpline 1930 are India-only. In other countries, report to your national cybercrime authority or local police.")
+    st.link_button("India: cybercrime.gov.in or call 1930", "https://cybercrime.gov.in/", icon=":material/gavel:")
+    st.link_button("USA: ReportFraud.ftc.gov", "https://consumer.ftc.gov/articles/what-do-if-you-were-scammed", icon=":material/policy:")
+st.caption("Elsewhere, report to your national cybercrime authority or local police. If money left your account, call your bank first.")
 
 message = st.session_state.get("selected_message")
 if message and message.get("provider") == "gmail" and gmail_token():
     from src.gmail_api import modify_message_labels, get_message_labels
-    st.subheader("Manage this email")
-    st.caption("Moving to Spam is optional. Gmail must grant inbox action permission. No message is permanently deleted.")
+    st.subheader("Move this email", anchor=False)
+    st.caption("Optional. It moves to your Gmail spam folder and can be undone; nothing is deleted.")
     consent_key = f"confirm_{message['id']}"
     confirmed = st.checkbox("Move this selected email to Spam", key=consent_key)
     if st.button("Move to Spam", disabled=not confirmed, type="primary"):
@@ -53,27 +62,25 @@ if message and message.get("provider") == "gmail" and gmail_token():
             else:
                 st.error(outcome["message"])
 elif message:
-    st.caption("This inbox connection supports checking only. Use Gmail directly to move messages, or connect with Google inbox action permission.")
+    st.caption(":material/info: To move this email to spam, use your email app. This connection can read emails but not move them.")
 
-with st.expander("Report an incorrect classification", expanded=False):
+with st.expander("Was this result wrong? Tell us", icon=":material/feedback:"):
     from src.active_learning import redact_personal_data
-    st.markdown("**:material/lock: Consent-based feedback review**")
-    st.caption("Corrections help improve future models. Basic redaction masks email addresses and phone numbers; please review the text below and remove any remaining personal names, addresses, or sensitive details before submitting.")
+    st.caption("Your correction helps improve the checker. Email addresses and phone numbers are hidden automatically; remove names or anything else private before sending.")
     with st.form("feedback"):
-        corrected = st.radio("Correct classification for this message", ["Legitimate message", "Spam message"])
+        corrected = st.radio("This message is actually", ["Legitimate message", "Spam message"], horizontal=True)
         clean_draft = redact_personal_data(st.session_state.checked_text)
         reviewed_text = st.text_area(
-            "Review and remove private details (pre-redacted)",
+            "Message text to send (edit out private details)",
             value=clean_draft,
             height=130,
             max_chars=50000,
             help="Remove any personal names, physical addresses, or confidential details before sending."
         )
-        comment = st.text_input("Optional comment or reason for correction", placeholder="e.g. Genuine internal project alert from IT team")
-        st.markdown("**Privacy and retention notice:**")
-        st.caption("Submissions remain strictly private until explicit consent is given. Feedback is held for up to 30 days. Deleting account data in Settings permanently removes saved feedback, but cannot retroactively modify already deployed model releases. Retraining requires administrator review and performance gates.")
-        consent = st.checkbox("I give explicit consent to share this reviewed correction with administrators for review and potential model training")
-        submitted = st.form_submit_button("Submit correction", disabled=not consent, type="primary")
+        comment = st.text_input("Why? (optional)", placeholder="e.g. It's a real alert from my bank")
+        st.caption("Kept for up to 30 days and reviewed by an administrator before it is used. You can delete it any time in Settings.")
+        consent = st.checkbox("I agree to share this corrected message with the administrators for review and model training")
+        submitted = st.form_submit_button("Send correction", type="primary", icon=":material/send:")
     if submitted:
         if not consent:
             st.error("Explicit consent is required to submit a correction.")
@@ -86,10 +93,10 @@ with st.expander("Report an incorrect classification", expanded=False):
                     comment,
                     consent_given=True
                 )
-                st.success("Correction saved with your explicit consent. An administrator will review it before it can affect future model candidates.")
+                st.success("Thanks, your correction was saved. An administrator will review it before it is used.", icon=":material/check_circle:")
             except ValueError as error:
                 st.error(str(error))
 if st.session_state.actions:
-    with st.expander("Actions confirmed in this session"):
+    with st.expander("Actions taken in this session", icon=":material/history:"):
         st.dataframe([{k: v for k, v in a.items() if k in {"timestamp", "action", "undone"}} for a in st.session_state.actions], hide_index=True)
 st.page_link("app_pages/check.py", label="Check another message", icon=":material/search:")

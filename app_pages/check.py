@@ -1,258 +1,260 @@
 import hashlib
 import streamlit as st
-from src.ui_shared import analyze, step_tracker
+from src.ui_shared import analyze, step_tracker, md_escape
 
 step_tracker(1)
-st.title("Is this message worth trusting?")
-st.markdown("Check an email, a job offer, or a payment request before you take the next step.")
-source = st.segmented_control("Message source", ["Paste text", "Email file", "Screenshot or QR", "Connected inbox"], default="Paste text", key="source")
+st.title("Is this message safe?")
+st.caption("Check an email, text, job offer or payment request before you click, reply or pay.")
 
-_METHOD_INFO = {
-    "Paste text": ("📋", "Copy any suspicious message — email, SMS, WhatsApp, or job offer — and paste it below."),
-    "Email file": ("📎", "Export the email as .eml from your email app and upload it. Links, headers, and metadata are all checked."),
-    "Screenshot or QR": ("📷", "Upload a screenshot or a QR code image. Text is extracted locally — the image is never sent anywhere."),
-    "Connected inbox": ("📬", "Connect Gmail in Settings and scan recent messages directly without copying anything."),
+SOURCES = {
+    "Paste text": ":material/content_paste: Paste text",
+    "Email file": ":material/mail: Email file",
+    "Screenshot or QR": ":material/photo_camera: Screenshot or QR",
+    "Connected inbox": ":material/inbox: My inbox",
 }
-_icon, _desc = _METHOD_INFO.get(source, ("📋", ""))
-st.markdown(
-    f'<div style="display:flex;gap:14px;align-items:center;padding:14px 18px;'
-    f'background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;margin:8px 0 16px;">'
-    f'<span style="font-size:24px;flex-shrink:0;">{_icon}</span>'
-    f'<span style="color:#1E40AF;font-size:13px;line-height:1.5;">{_desc}</span></div>',
-    unsafe_allow_html=True
-)
+source = st.segmented_control("Where is the message?", list(SOURCES), default="Paste text", key="source",
+                              format_func=SOURCES.get, label_visibility="collapsed", width="stretch") or "Paste text"
+
+CATEGORIES = {"General message": "General", "Job or internship": "Job or internship", "Invoice or payment": "Invoice or payment"}
+
+# Inbox list badges: what the app concluded, in a few words.
+INBOX_BADGES = {
+    "High risk": ":red-badge[:material/gpp_bad: Likely scam]",
+    "Needs verification": ":orange-badge[:material/help: Check first]",
+    "No strong warning found": ":green-badge[:material/verified_user: Looks normal]",
+    "Unable to assess": ":gray-badge[:material/info: Not sure]",
+}
+
+
+def category_picker(key):
+    choice = st.segmented_control("What is it about?", list(CATEGORIES), default="General message", key=key,
+                                  format_func=CATEGORIES.get, help="Job and payment messages get extra checks for common scams.")
+    return choice or "General message"
+
+
+def open_result():
+    st.session_state["selected_message"] = None
+    st.switch_page("app_pages/understand.py")
+
 
 if source == "Email file":
     from src.eml_reader import parse_email_file
-    st.caption("Export a message as .eml from your email app. Links are not opened, and attachment files are not executed or extracted to disk.")
-    uploaded_email = st.file_uploader("Upload an email file", type=["eml"], max_upload_size=10, key="email_file")
+    uploaded_email = st.file_uploader("Upload an email saved as .eml", type=["eml"], max_upload_size=10, key="email_file",
+                                      help="In Gmail: open the message, ⋮ menu, Download message. In Outlook: File, Save as.")
+    st.caption("Links are not opened and attachments are not run. Sender headers in a file are treated as claims, not proof.")
     if uploaded_email:
         try:
             parsed = parse_email_file(uploaded_email.getvalue())
-            st.text(f"Subject: {parsed['subject']}\nFrom: {parsed['sender'] or '(Not supplied)'}")
-            for warning in parsed["warnings"]:
-                st.warning(warning)
-            with st.expander("Review message text", expanded=True):
-                st.text(parsed["display_body"] or "No readable message body.")
-            if parsed["attachments"]:
-                st.caption("Attachment metadata only — file contents are not scanned")
-                st.dataframe(parsed["attachments"], hide_index=True)
-            with st.form("email_file_check"):
-                category = st.selectbox("What kind of email is this?", ["General message", "Job or internship", "Invoice or payment"])
-                domain = st.text_input("Employer or supplier's official domain (optional)")
-                with st.expander("Compare with earlier message in thread (optional)"):
-                    previous = st.text_area("Earlier message text", max_chars=50000, key="eml_prev_text")
-                    previous_sender = st.text_input("Earlier sender address (optional)", key="eml_prev_sender")
-                    previous_reply_to = st.text_input("Earlier reply-to address (optional)", key="eml_prev_reply_to")
-                submitted = st.form_submit_button("Check email file", type="primary", icon=":material/search:", width="stretch")
+            with st.container(border=True):
+                st.markdown(f"**{md_escape(parsed['subject']) or '(No subject)'}**")
+                st.caption(f"From {md_escape(parsed['sender']) or 'an unknown sender'}")
+                for warning in parsed["warnings"]:
+                    st.warning(warning, icon=":material/warning:")
+                with st.expander("Read the message text", icon=":material/article:"):
+                    st.text(parsed["display_body"] or "No readable message body.")
+                if parsed["attachments"]:
+                    st.caption(f":material/attach_file: {len(parsed['attachments'])} attachment(s). Names and types are checked; contents are not scanned.")
+            with st.form("email_file_check", border=False):
+                category = category_picker("eml_category")
+                with st.expander("More options", icon=":material/tune:"):
+                    domain = st.text_input("Official website of the employer or supplier", placeholder="company.com")
+                    previous = st.text_area("Earlier message in the same conversation", max_chars=50000, key="eml_prev_text",
+                                            help="We compare payment details, sender and links between the two.")
+                    previous_sender = st.text_input("Earlier sender address", key="eml_prev_sender")
+                    previous_reply_to = st.text_input("Earlier reply-to address", key="eml_prev_reply_to")
+                submitted = st.form_submit_button("Check this email", type="primary", icon=":material/search:", width="stretch")
             if submitted:
-                with st.spinner("Checking email text, links, and metadata…"):
+                with st.spinner("Checking the text, links and sender…"):
                     result = analyze(parsed["full_text"], category=category, sender=parsed["sender"], company_domain=domain,
                                      previous_text=previous, previous_sender=previous_sender, previous_reply_to=previous_reply_to,
                                      headers=parsed["headers"], attachments=parsed["attachments"])
                 result["limitations"].extend(parsed["warnings"])
-                st.session_state["selected_message"] = None
-                st.switch_page("app_pages/understand.py")
+                open_result()
         except ValueError as error:
-            st.error(str(error))
+            st.error(str(error), icon=":material/error:")
         except FileNotFoundError:
-            st.error("The model is unavailable. Check the setup instructions in Advanced.")
+            st.error("The checker is not set up yet. See Advanced for setup instructions.", icon=":material/error:")
+
 elif source == "Connected inbox":
-    from html import escape
-    from src.ui_shared import gmail_token, connect_inbox, md_escape
+    from src.ui_shared import gmail_token, connect_inbox
     from src.rate_limit import enforce
     from src.gmail_api import scan_gmail_with_oauth
-    from src.gmail_scanner import scan_gmail_inbox, verify_inbox_connection, resolve_imap_settings
+    from src.gmail_scanner import scan_gmail_inbox
     token = gmail_token()
     credentials = st.session_state.get("imap_credentials", {})
     if not token and not credentials:
-        st.info("No active inbox connection. Connect your email or try the demo mailbox to scan messages automatically.")
-        col_conn, col_demo = st.columns([1, 1])
-        with col_conn:
-            st.markdown("#### Connect Your Email")
-            with st.form("quick_inbox_connect"):
-                quick_email = st.text_input("Email address", placeholder="e.g. name@gmail.com or user@outlook.com")
-                quick_pwd = st.text_input("App Password", type="password", placeholder="16-character App Password")
-                quick_submit = st.form_submit_button("Test & Connect", type="primary", width="stretch")
+        st.caption("Scan your recent emails without copying anything. We only read them; nothing is moved or deleted.")
+        col_connect, col_demo = st.columns(2)
+        with col_connect.container(border=True, height="stretch"):
+            st.markdown("**:material/link: Connect your email**")
+            with st.form("quick_inbox_connect", border=False):
+                quick_email = st.text_input("Email address", placeholder="name@gmail.com")
+                quick_pwd = st.text_input("App password", type="password", placeholder="16-character app password",
+                                          help="Not your normal password. Create one in your email account's security settings; Settings explains how.")
+                quick_submit = st.form_submit_button("Connect", type="primary", width="stretch", icon=":material/login:")
             if quick_submit:
                 if not quick_email.strip() or not quick_pwd.strip():
-                    st.warning("Enter both your email and App Password.")
+                    st.warning("Enter your email address and app password.")
                 else:
-                    with st.spinner("Connecting to mail server…"):
+                    with st.spinner("Connecting…"):
                         res = connect_inbox(quick_email.strip(), quick_pwd.strip())
                     if res["success"]:
-                        st.session_state["imap_credentials"] = {
-                            "email_address": quick_email.strip(),
-                            "app_password": quick_pwd.strip(),
-                            "provider": res["provider"]
-                        }
+                        st.session_state["imap_credentials"] = {"email_address": quick_email.strip(), "app_password": quick_pwd.strip(),
+                                                                "provider": res["provider"]}
                         st.session_state["inbox_provider_name"] = res["provider"]
                         st.session_state.messages = []
-                        st.success(res["message"])
                         st.rerun()
                     else:
-                        st.error(res["message"])
+                        st.error(res["message"], icon=":material/error:")
                         if res.get("troubleshooting"):
-                            st.info(res["troubleshooting"])
-            st.page_link("app_pages/settings.py", label="Open advanced connection settings", icon=":material/settings:")
-        with col_demo:
-            st.markdown("#### Instant Demo Mailbox")
-            st.caption("Scan 5 pre-configured realistic threat and legitimate emails without entering your credentials.")
-            if st.button("Use Demo Mailbox (5 emails)", type="secondary", icon=":material/play_circle:", width="stretch"):
-                st.session_state["imap_credentials"] = {
-                    "email_address": "demo@spamguard.local",
-                    "app_password": "demo",
-                    "provider": "SpamGuard Demo Feed"
-                }
-                st.session_state["inbox_provider_name"] = "SpamGuard Demo Feed"
+                            st.caption(res["troubleshooting"])
+            st.page_link("app_pages/settings.py", label="Other ways to connect", icon=":material/settings:")
+        with col_demo.container(border=True, height="stretch"):
+            st.markdown("**:material/science: Try the demo inbox**")
+            st.caption("Five sample emails, including two scams, so you can see how it works first.")
+            if st.button("Open demo inbox", icon=":material/play_circle:", width="stretch"):
+                st.session_state["imap_credentials"] = {"email_address": "demo@spamguard.local", "app_password": "demo",
+                                                        "provider": "SpamGuard demo inbox"}
+                st.session_state["inbox_provider_name"] = "SpamGuard demo inbox"
                 st.session_state.messages = []
-                st.success("Connected to SpamGuard Demo Mailbox!")
                 st.rerun()
     else:
-        connected_email = credentials.get("email_address") or (st.user.get("email") if token else "Connected Email")
-        provider_name = credentials.get("provider") or st.session_state.get("inbox_provider_name") or ("Google Gmail (OAuth)" if token else "IMAP Mailbox")
-        st.markdown(
-            f'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;'
-            f'background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:12px;">'
-            f'<div><span style="font-weight:600;color:#15803D;">● Connected:</span> {escape(str(connected_email))} '
-            f'<span style="font-size:12px;color:#4B5563;">({escape(str(provider_name))})</span></div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-        with st.form("inbox_scan"):
-            scan_col1, scan_col2, scan_col3 = st.columns([1, 1, 1])
-            with scan_col1:
-                count = st.slider("Messages to check", 5, 25, 10, 5)
-            with scan_col2:
-                folder = st.selectbox("Folder", ["INBOX", "[Gmail]/Spam", "Spam", "Junk"], index=0)
-            with scan_col3:
-                unread = st.checkbox("Only unread messages", value=False)
-            submitted = st.form_submit_button("Read recent messages", type="primary", width="stretch")
+        connected_email = credentials.get("email_address") or (st.user.get("email") if token else "your inbox")
+        provider_name = credentials.get("provider") or st.session_state.get("inbox_provider_name") or ("Gmail" if token else "IMAP")
+        with st.container(horizontal=True, vertical_alignment="center"):
+            st.badge(f"Connected: {md_escape(connected_email)} ({md_escape(provider_name)})", icon=":material/check_circle:", color="green")
+            st.page_link("app_pages/settings.py", label="Change", icon=":material/settings:")
+        with st.form("inbox_scan", border=True):
+            col_count, col_folder = st.columns(2)
+            with col_count:
+                count = st.select_slider("How many recent emails", [5, 10, 15, 20, 25], value=10)
+            with col_folder:
+                folder = st.selectbox("Folder", ["INBOX", "[Gmail]/Spam", "Spam", "Junk"], index=0,
+                                      format_func=lambda f: {"INBOX": "Inbox", "[Gmail]/Spam": "Gmail spam"}.get(f, f))
+            unread = st.toggle("Only unread", value=False)
+            submitted = st.form_submit_button("Scan emails", type="primary", width="stretch", icon=":material/search:")
         if submitted:
             try:
                 enforce("inbox_scan", st.session_state.get("identity", ""))
-                with st.spinner("Reading and classifying messages…"):
+                with st.spinner("Reading and checking your emails…"):
                     if token:
                         messages = scan_gmail_with_oauth(token, count, unread, "svm")
                     else:
-                        messages = scan_gmail_inbox(
-                            email_address=credentials["email_address"],
-                            app_password=credentials["app_password"],
-                            folder=folder,
-                            max_emails=count,
-                            only_unread=unread,
-                            model_type="svm",
-                            imap_host=credentials.get("imap_host", ""),
-                            imap_port=credentials.get("imap_port", 993)
-                        )
+                        messages = scan_gmail_inbox(email_address=credentials["email_address"], app_password=credentials["app_password"],
+                                                    folder=folder, max_emails=count, only_unread=unread, model_type="svm",
+                                                    imap_host=credentials.get("imap_host", ""), imap_port=credentials.get("imap_port", 993))
                 st.session_state["messages"] = messages
                 if not messages:
-                    st.info(f"No messages found matching this scan in '{folder}'.")
+                    st.info("No emails matched this scan.", icon=":material/inbox:")
             except Exception as err:
                 st.session_state["messages"] = []
-                st.error(f"Inbox scan error: {err}")
-                st.info("Try reconnecting in Settings or checking your App Password permissions.")
+                st.error(f"The scan didn't work: {err}", icon=":material/error:")
+                st.caption("Try reconnecting in Settings, or check that your app password is still valid.")
         messages = st.session_state.get("messages", [])
         if messages:
-            st.markdown(f"**Found {len(messages)} messages:**")
-            from src.scam_assistant import inbox_triage, INBOX_TAGS
+            from src.scam_assistant import inbox_triage
             for m in messages:
                 if "assessment" not in m:
                     m["assessment"] = inbox_triage(m)
-            def format_msg(i):
-                m = messages[i]
-                return f"{INBOX_TAGS[m['assessment']]} · {m['subject']} · {m['sender']}"
-            chosen = st.selectbox("Choose a message to examine", range(len(messages)), format_func=format_msg)
-            message = messages[chosen]
-            with st.container(border=True):
-                st.markdown(f"**Subject:** {md_escape(message['subject'])}")
-                st.markdown(f"**From:** {md_escape(message['sender'])} · **Date:** {md_escape(message['date'])}")
-                if message.get("attachments"):
-                    st.caption(f"📎 Attachments ({len(message['attachments'])}): {', '.join(md_escape(a.get('filename', '')) for a in message['attachments'])}")
-                st.text_area("Body preview", message["body_preview"], height=100, disabled=True)
-            if st.button("Check this message in depth", type="primary", icon=":material/search:", width="stretch"):
-                try:
-                    with st.spinner("Running security analysis & forensics…"):
-                        analyze(message["full_text"], sender=message["sender"], headers=message.get("headers"), attachments=message.get("attachments"))
-                    st.session_state["selected_message"] = dict(message)
-                    st.switch_page("app_pages/understand.py")
-                except (FileNotFoundError, ValueError) as e:
-                    st.error(f"The check could not be completed: {e}")
+            counts = {k: sum(m["assessment"] == k for m in messages) for k in INBOX_BADGES}
+            attention = counts["High risk"] + counts["Needs verification"]
+            st.subheader(f"{len(messages)} emails checked", anchor=False)
+            st.markdown("  ".join(f"{INBOX_BADGES[k]} {counts[k]}" for k in INBOX_BADGES if counts[k]))
+            show = st.segmented_control("Show", ["All", "Needs attention"], default="All", key="inbox_filter",
+                                        label_visibility="collapsed") or "All"
+            if show == "Needs attention" and not attention:
+                st.success("Nothing here needs attention.", icon=":material/verified_user:")
+            for index, message in enumerate(messages):
+                if show == "Needs attention" and message["assessment"] not in {"High risk", "Needs verification"}:
+                    continue
+                with st.container(border=True, horizontal=True, vertical_alignment="center", gap="small"):
+                    with st.container(gap="xsmall"):
+                        st.markdown(f"{INBOX_BADGES[message['assessment']]} **{md_escape(message['subject']) or '(No subject)'}**")
+                        st.caption(f"{md_escape(message['sender'])} · {md_escape(message.get('date', ''))[:31]}")
+                    if st.button("Details", key=f"inbox_open_{index}", icon=":material/arrow_forward:", width="content"):
+                        try:
+                            with st.spinner("Checking this email in detail…"):
+                                analyze(message["full_text"], sender=message["sender"], headers=message.get("headers"),
+                                        attachments=message.get("attachments"),
+                                        sender_verified=bool((message.get("sender_verification") or {}).get("verified")))
+                            st.session_state["selected_message"] = dict(message)
+                            st.switch_page("app_pages/understand.py")
+                        except (FileNotFoundError, ValueError) as error:
+                            st.error(f"The check could not be completed: {error}", icon=":material/error:")
+
 else:
     st.session_state.setdefault("message_input", st.session_state.get("draft_text", ""))
     if source == "Screenshot or QR":
         from src.image_checks import extract_image_content
-        uploaded = st.file_uploader("Upload a screenshot or QR image", type=["png", "jpg", "jpeg", "webp"], max_upload_size=10)
+        uploaded = st.file_uploader("Upload a screenshot or a photo of a QR code", type=["png", "jpg", "jpeg", "webp"], max_upload_size=10)
+        st.caption("Text is read on this server. QR links are shown, never opened. Check the text below before you continue.")
         if uploaded:
             data = uploaded.getvalue()
             digest = hashlib.sha256(data).hexdigest()
-            st.image(data, caption="Uploaded image — review extracted text before checking.", width="stretch")
+            with st.expander("Your image", icon=":material/image:"):
+                st.image(data, width="stretch")
             if st.session_state.get("image_digest") != digest:
                 try:
-                    with st.spinner("Reading the image locally…"):
+                    with st.spinner("Reading the image…"):
                         extracted = extract_image_content(data, "eng+hin" if st.session_state.language == "Hindi" else "eng")
                     st.session_state["image_digest"] = digest
                     st.session_state["image_extraction"] = extracted
                     st.session_state["message_input"] = extracted["text"] + "\n" + "\n".join(extracted["qr_destinations"])
                 except ValueError as error:
-                    st.error(str(error))
+                    st.error(str(error), icon=":material/error:")
             extracted = st.session_state.get("image_extraction", {})
             for warning in extracted.get("warnings", []):
-                st.warning(warning)
+                st.warning(warning, icon=":material/warning:")
             for destination in extracted.get("qr_destinations", []):
-                st.caption("Decoded QR content — destination has not been opened")
+                st.caption("The QR code points to (not opened):")
                 st.code(destination, language=None)
     else:
-        if source == "Paste text":
-            st.markdown("**💡 Not sure what to paste? Try a real example:**")
-            _ex_col1, _ex_col2, _ex_col3 = st.columns(3)
-            _EXAMPLES = {
-                "🪤 Job scam": "You are selected for a remote internship. Pay a registration fee of ₹2,000 to confirm your job. Send your Aadhaar and bank details immediately.",
-                "💳 Fake payment": "Your UPI payment of ₹9,999 is pending. Click here immediately to confirm your bank account: http://paypa1-verify.xyz",
-                "🔑 OTP phishing": "Dear customer, your account will be suspended. Share OTP 847291 with our agent on 8800123456 to verify your identity.",
-            }
-            for _col, (_label, _text) in zip([_ex_col1, _ex_col2, _ex_col3], _EXAMPLES.items()):
-                with _col:
-                    if st.button(_label, width="stretch", key=f"ex_{_label}"):
-                        st.session_state["message_input"] = _text
-                        st.rerun()
+        EXAMPLES = {
+            ":material/work: Job scam": "You are selected for a remote internship. Pay a registration fee of ₹2,000 to confirm your job. Send your Aadhaar and bank details immediately.",
+            ":material/payments: Fake payment": "Your UPI payment of ₹9,999 is pending. Click here immediately to confirm your bank account: http://paypa1-verify.xyz",
+            ":material/password: OTP request": "Dear customer, your account will be suspended. Share OTP 847291 with our agent on 8800123456 to verify your identity.",
+        }
+
+        def use_example():
+            choice = st.session_state.get("example_choice")
+            if choice:
+                st.session_state["message_input"] = EXAMPLES[choice]
+                st.session_state["example_choice"] = None
+
+        st.pills("No message handy? Try an example", list(EXAMPLES), key="example_choice", on_change=use_example)
+
     with st.form("message_check", border=True):
-        category = st.selectbox("What kind of message is this?", ["General message", "Job or internship", "Invoice or payment"])
-        text = st.text_area("Message text", height=220, placeholder="Paste the full message here. Remove private details you do not want to submit.", key="message_input", max_chars=50000)
-        with st.expander("Add context or compare earlier message"):
-            sender = st.text_input("Current sender email address (optional)", placeholder="sender@example.com", key="current_sender_input")
-            domain = st.text_input("Employer or supplier's official domain (optional)", placeholder="company.com")
-            st.markdown("**:material/compare_arrows: Compare earlier message in thread (optional)**")
-            st.caption("Check for sudden changes in sender, reply-to, payment details, links, or sensitive requests.")
-            previous = st.text_area("Earlier message text (optional)", height=100, max_chars=50000, placeholder="Paste earlier message from this thread to compare…", key="previous_message_input")
+        text = st.text_area("Message", height=200, key="message_input", max_chars=50000,
+                            placeholder="Paste the whole message here, including any links. Remove anything private you don't want to share.")
+        category = category_picker("message_category")
+        with st.expander("More options: sender, earlier message, attachment", icon=":material/tune:"):
+            sender = st.text_input("Sender's email address", placeholder="sender@example.com", key="current_sender_input")
+            domain = st.text_input("Official website of the employer or supplier", placeholder="company.com",
+                                   help="We warn if the sender or links don't match it.")
+            st.markdown("**:material/compare_arrows: Compare with an earlier message**")
+            st.caption("Useful for invoices and ongoing conversations: we look for changed bank details, senders, links or new requests.")
+            previous = st.text_area("Earlier message", height=100, max_chars=50000, key="previous_message_input",
+                                    placeholder="Paste an earlier message from the same conversation")
             prev_col1, prev_col2 = st.columns(2)
             with prev_col1:
-                previous_sender = st.text_input("Earlier sender address (optional)", placeholder="alice@supplier.com", key="previous_sender_input")
+                previous_sender = st.text_input("Earlier sender address", placeholder="alice@supplier.com", key="previous_sender_input")
             with prev_col2:
-                previous_reply_to = st.text_input("Earlier reply-to address (optional)", placeholder="replies@supplier.com", key="previous_reply_to_input")
-            filename = st.text_input("Attachment filename (optional)", help="Filename and metadata checks only; file contents will not be scanned.")
-        st.markdown(
-            '<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;'
-            'background:#F0FDF4;border:1px solid #BBF7D0;'
-            'border-radius:8px;margin:6px 0 4px;">'
-            '<span style="font-size:15px;">🔒</span>'
-            '<span style="font-size:12px;color:#15803D;">Checked on this server only — '
-            'nothing is sent to any AI service unless you choose it.</span></div>',
-            unsafe_allow_html=True
-        )
+                previous_reply_to = st.text_input("Earlier reply-to address", placeholder="replies@supplier.com", key="previous_reply_to_input")
+            filename = st.text_input("Attachment file name", placeholder="invoice.pdf",
+                                     help="Only the name and type are checked; the file itself is not scanned.")
         submitted = st.form_submit_button("Check message", type="primary", icon=":material/search:", width="stretch")
+        st.caption(":material/lock: Checked on this server. Nothing is sent to an outside AI service or saved unless you choose to.")
     if submitted:
         st.session_state["draft_text"] = text
         if not text.strip():
-            st.warning("Add message text before checking.")
+            st.warning("Paste a message first, then press Check message.", icon=":material/edit_note:")
         else:
             try:
-                with st.spinner("Checking the message and its evidence…"):
+                with st.spinner("Checking the message…"):
                     analyze(text, category=category, sender=sender, company_domain=domain, previous_text=previous,
                             previous_sender=previous_sender, previous_reply_to=previous_reply_to,
                             attachments=[{"filename": filename}] if filename else None)
-                st.session_state["selected_message"] = None
-                st.switch_page("app_pages/understand.py")
-            except (FileNotFoundError, ValueError):
-                st.error("The check could not be completed. Check the model setup in Advanced.")
-st.caption("No account connection needed for pasted text. Results stay in this session unless saving is enabled in Settings.")
+                open_result()
+            except (FileNotFoundError, ValueError) as error:
+                st.error(str(error) if "Too many requests" in str(error) else "The check could not be completed. Check the setup in Advanced.",
+                         icon=":material/error:")

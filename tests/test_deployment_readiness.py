@@ -129,6 +129,8 @@ def test_app_pages_importable():
             return self
         def __exit__(self, *args):
             pass
+        def container(self, *args, **kwargs):
+            return MockContext()
 
     class MockSessionState(dict):
         def setdefault(self, k, default=None):
@@ -172,7 +174,8 @@ def test_app_pages_importable():
                  "link_button", "button", "checkbox", "text_area",
                  "text_input", "form_submit_button", "radio",
                  "page_link", "success", "error", "info", "dataframe",
-                 "slider", "text", "switch_page", "warning", "rerun", "code", "image", "json", "download_button", "number_input", "progress", "logo"):
+                 "slider", "text", "switch_page", "warning", "rerun", "code", "image", "json", "download_button", "number_input", "progress", "logo",
+                 "pills", "select_slider", "space", "toast", "feedback"):
         setattr(st_stub, attr, lambda *a, **kw: None)
 
     import pathlib

@@ -91,105 +91,96 @@ def analyze(text, **kwargs):
 def result_required():
     result = st.session_state.get("result")
     if not result:
-        st.info("Check a message first. Your assessment and next steps will appear here.", icon=":material/info:")
-        st.page_link("app_pages/check.py", label="Check a message", icon=":material/search:")
+        with st.container(border=True, horizontal_alignment="center"):
+            st.info("Check a message first. Your result and next steps will appear here.", icon=":material/info:")
+            st.page_link("app_pages/check.py", label="Check a message", icon=":material/search:")
         st.stop()
         raise SystemExit(0)
     return result
 
 
-def assessment_card(result):
+# Plain-language verdicts. Hindi and Hinglish fall back to the translated labels below.
+VERDICTS = {
+    "High risk": ("error", ":material/gpp_bad:", "Likely a scam",
+                  "Don't click links, reply, pay, or share codes or passwords."),
+    "Needs verification": ("warning", ":material/help:", "Check before you act",
+                           "Confirm with the sender using a phone number or website you already trust."),
+    "No strong warning found": ("success", ":material/verified_user:", "No warning signs found",
+                                "It looks normal. Stay careful with links and payment requests as usual."),
+    "Unable to assess": ("info", ":material/info:", "Not enough to go on",
+                         "Add more of the message, or the sender's address, and check again."),
+}
+
+_TRANSLATED_ACTIONS = {
+    "Hindi": {
+        "High risk": "पैसे भेजने या जानकारी साझा करने से पहले रुकें",
+        "Needs verification": "स्वतंत्र रूप से पुष्टि करें",
+        "No strong warning found": "प्रेषक अभी भी असत्यापित है",
+        "Unable to assess": "अधिक संदर्भ आवश्यक",
+    },
+    "Hinglish": {
+        "High risk": "Paise dene ya details share karne se pehle ruko",
+        "Needs verification": "Independently confirm karein",
+        "No strong warning found": "Sender verify nahi hua hai",
+        "Unable to assess": "Zyada context chahiye",
+    },
+}
+
+
+def quote_with_highlight(sentence, match):
+    """A quoted sentence with the matched words highlighted, as escaped Markdown (theme-aware)."""
+    position = sentence.lower().find((match or "").lower()) if match else -1
+    if position < 0:
+        return f"> {md_escape(sentence)}"
+    end = position + len(match)
+    return (f"> {md_escape(sentence[:position])}:orange-background[**{md_escape(sentence[position:end])}**]"
+            f"{md_escape(sentence[end:])}")
+
+
+def assessment_card(result, compact=False):
+    """The verdict in one coloured box: what it is, and what to do now. `compact` hides the score."""
     language = st.session_state.get("language", "English")
-    assessment_key = result["assessment"]
-    title = ASSESSMENTS.get(language, ASSESSMENTS["English"]).get(assessment_key, assessment_key)
-    with st.container(border=True):
-        descriptors = {
-            "English": {
-                "High risk": (":material/report:", "red", "High risk · Action: Stop before paying or sharing details"),
-                "Needs verification": (":material/help:", "orange", "Needs verification · Action: Confirm independently"),
-                "No strong warning found": (":material/search_check:", "blue", "No strong warning found · Sender is still unverified"),
-                "Unable to assess": (":material/info:", "gray", "Unable to assess · More context needed")
-            },
-            "Hindi": {
-                "High risk": (":material/report:", "red", "उच्च जोखिम · कदम: पैसे भेजने या जानकारी साझा करने से पहले रुकें"),
-                "Needs verification": (":material/help:", "orange", "पुष्टि आवश्यक · कदम: स्वतंत्र रूप से पुष्टि करें"),
-                "No strong warning found": (":material/search_check:", "blue", "कोई बड़ा चेतावनी संकेत नहीं मिला · प्रेषक अभी भी असत्यापित है"),
-                "Unable to assess": (":material/info:", "gray", "जाँच के लिए अपर्याप्त जानकारी · अधिक संदर्भ आवश्यक")
-            },
-            "Hinglish": {
-                "High risk": (":material/report:", "red", "Risk zyada hai · Action: Paise dene ya details share karne se pehle ruko"),
-                "Needs verification": (":material/help:", "orange", "Pehle verify karein · Action: Independently confirm karein"),
-                "No strong warning found": (":material/search_check:", "blue", "Koi strong warning nahi mili · Sender verify nahi hua hai"),
-                "Unable to assess": (":material/info:", "gray", "Check karne ke liye jaankari kam hai · Zyada context chahiye")
-            }
-        }
-        icon, color, status_descriptor = descriptors.get(language, descriptors["English"]).get(
-            assessment_key, (":material/info:", "gray", assessment_key)
-        )
-        col_badge, col_score = st.columns([3, 1])
-        with col_badge:
-            st.badge(f"{title} — {status_descriptor}", icon=icon, color=color)
-        with col_score:
-            if result.get("score") is not None:
-                st.markdown(f'<div style="text-align:right;font-weight:700;font-size:14px;color:#475569;">Risk Score: <span style="color:#0F172A;">{result["score"]}/100</span></div>', unsafe_allow_html=True)
-        if result.get("score") is not None:
-            st.progress(min(1.0, max(0.0, float(result["score"]) / 100.0)))
-        localized_summary = result.get("localized_summaries", {}).get(language, result["summary"])
-        st.subheader(localized_summary)
-        if result["score"] is not None:
-            if language == "Hindi":
-                st.caption(f"जोखिम सूचक: {result['score']}/100 · उच्च स्कोर अधिक संदिग्ध संकेतों को दर्शाता है। यह एक संकेतक है, गारंटीकृत निर्णय नहीं।")
-            elif language == "Hinglish":
-                st.caption(f"Risk indicator: {result['score']}/100 · Score zyada hona matlab zyada suspicious cues mile. Yeh indicator hai, koi guarantee nahi.")
-            else:
-                st.caption(f"Risk indicator: {result['score']}/100 · Higher score indicates more detected suspicious cues. This is an indicator, not a mathematical probability or a guaranteed verdict.")
-        if language != "English":
-            st.caption("Key guidance and labels are translated. Technical evidence remains in original English; coverage limitations apply.")
+    key = result["assessment"]
+    kind, icon, title, action = VERDICTS.get(key, VERDICTS["Unable to assess"])
+    if language != "English":
+        title = ASSESSMENTS.get(language, ASSESSMENTS["English"]).get(key, key)
+        action = _TRANSLATED_ACTIONS.get(language, {}).get(key, action)
+    getattr(st, kind)(f"**{title}**  \n{action}", icon=icon)
+    if result.get("score") is not None and not compact:
+        score = int(result["score"])
+        label = {"English": "Risk indicator", "Hindi": "जोखिम सूचक", "Hinglish": "Risk indicator"}.get(language, "Risk indicator")
+        color = {"error": "red", "warning": "orange", "success": "green"}.get(kind, "gray")
+        st.markdown(f":{color}-badge[:material/speed: {label}: {score}/100]")
+        st.caption({
+            "Hindi": "उच्च स्कोर का मतलब अधिक संदिग्ध संकेत। यह एक संकेतक है, गारंटीकृत निर्णय नहीं।",
+            "Hinglish": "Score zyada matlab zyada suspicious cues. Yeh indicator hai, guarantee nahi.",
+        }.get(language, "Higher means more warning signs were found. It is an indicator, not a guarantee."))
+    if language != "English":
+        st.caption("Key guidance and labels are translated. Technical evidence remains in original English; coverage limitations apply.")
+
+
+STEPS = [
+    ("Check", ":material/search:"),
+    ("Result", ":material/fact_check:"),
+    ("What to do", ":material/task_alt:"),
+]
 
 
 def step_tracker(current_step: int):
-    """Horizontal 3-step progress bar shown at the top of every main page."""
-    steps = [
-        ("Check", "Paste, upload or connect inbox"),
-        ("Understand", "See why it's suspicious"),
-        ("Act", "Protect yourself"),
-    ]
-    parts = [
-        '<div style="display:flex;align-items:flex-start;padding:16px 0 24px;'
-        'gap:0;width:100%;border-bottom:1px solid #E2E8F0;margin-bottom:8px;">'
-    ]
-    for i, (title, desc) in enumerate(steps, 1):
-        done, active = i < current_step, i == current_step
-        if active:
-            circle_bg, circle_border, num_color = "#2563EB", "#2563EB", "#ffffff"
-            title_color, desc_color = "#1D4ED8", "#6B7280"
-        elif done:
-            circle_bg, circle_border, num_color = "#16A34A", "#16A34A", "#ffffff"
-            title_color, desc_color = "#15803D", "#9CA3AF"
+    """Compact progress line shown at the top of the three main pages."""
+    parts = []
+    has_result = bool(st.session_state.get("result"))
+    for index, (title, icon) in enumerate(STEPS, 1):
+        if index < current_step and has_result:
+            parts.append(f":green-badge[:material/check: {title}]")
+        elif index == current_step:
+            parts.append(f":blue-badge[{icon} {index}. {title}]")
         else:
-            circle_bg, circle_border, num_color = "#F1F5F9", "#CBD5E1", "#94A3B8"
-            title_color, desc_color = "#94A3B8", "#CBD5E1"
-        label = "✓" if done else str(i)
-        parts.append(
-            f'<div style="flex:1;text-align:center;min-width:0;padding:0 4px;">'
-            f'<div style="width:36px;height:36px;border-radius:50%;background:{circle_bg};'
-            f'border:2px solid {circle_border};color:{num_color};display:inline-flex;'
-            f'align-items:center;justify-content:center;font-weight:700;font-size:14px;">{label}</div>'
-            f'<div style="font-weight:600;font-size:13px;color:{title_color};margin-top:8px;">{title}</div>'
-            f'<div style="font-size:11px;color:{desc_color};margin-top:3px;line-height:1.4;">{desc}</div>'
-            f'</div>'
-        )
-        if i < 3:
-            line_color = "#16A34A" if done else "#E2E8F0"
-            parts.append(
-                f'<div style="flex:0 0 40px;height:2px;background:{line_color};'
-                f'margin-top:18px;border-radius:2px;flex-shrink:0;"></div>'
-            )
-    parts.append('</div>')
-    st.markdown("".join(parts), unsafe_allow_html=True)
+            parts.append(f":gray-badge[{index}. {title}]")
+    st.markdown(" :material/chevron_right: ".join(parts))
 
 
 def download_result(result):
     export = {key: value for key, value in result.items() if key != "report"}
-    st.download_button("Download assessment", json.dumps(export, ensure_ascii=False, indent=2),
+    st.download_button("Download this result", json.dumps(export, ensure_ascii=False, indent=2),
                        file_name="spamguard-assessment.json", mime="application/json", icon=":material/download:")

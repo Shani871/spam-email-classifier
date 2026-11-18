@@ -1,28 +1,54 @@
 [theme]
-base = "light"
-primaryColor = "#2563EB"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F8FAFC"
-textColor = "#0F172A"
-borderColor = "#E2E8F0"
-showWidgetBorder = true
-showSidebarBorder = true
-baseRadius = "0.75rem"
-buttonRadius = "0.5rem"
+# Shared look for light and dark mode. Colours per mode are below; users can switch
+# appearance in the app menu (Settings > Theme).
 font = "sans-serif"
 headingFont = "sans-serif"
 baseFontSize = 16
-linkColor = "#2563EB"
+baseRadius = "0.75rem"
+buttonRadius = "0.6rem"
+showWidgetBorder = true
+showSidebarBorder = true
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+headingFontSizes = ["2rem", "1.45rem", "1.2rem", "1.05rem", "1rem", "0.9rem"]
+linkUnderline = false
+
+[theme.light]
+primaryColor = "#2563EB"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F7FA"
+textColor = "#0F172A"
+borderColor = "#E2E8F0"
+linkColor = "#1D4ED8"
 redColor = "#DC2626"
 orangeColor = "#D97706"
 greenColor = "#16A34A"
 blueColor = "#2563EB"
 grayColor = "#64748B"
 
-[theme.sidebar]
-backgroundColor = "#F8FAFC"
-secondaryBackgroundColor = "#F1F5F9"
+[theme.light.sidebar]
+backgroundColor = "#F5F7FA"
+secondaryBackgroundColor = "#FFFFFF"
 textColor = "#0F172A"
+borderColor = "#E2E8F0"
+
+[theme.dark]
+primaryColor = "#60A5FA"
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#141C2E"
+textColor = "#E5E7EB"
+borderColor = "#263247"
+linkColor = "#93C5FD"
+redColor = "#F87171"
+orangeColor = "#FBBF24"
+greenColor = "#4ADE80"
+blueColor = "#60A5FA"
+grayColor = "#94A3B8"
+
+[theme.dark.sidebar]
+backgroundColor = "#0F1626"
+secondaryBackgroundColor = "#141C2E"
+textColor = "#E5E7EB"
+borderColor = "#263247"
 
 [server]
 headless = true
